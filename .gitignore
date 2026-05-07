@@ -1,0 +1,41 @@
+# ROS 2 build artifacts
+dogzilla_ws/build/
+dogzilla_ws/install/
+dogzilla_ws/log/
+dogzilla_ws/src/build/
+dogzilla_ws/src/install/
+dogzilla_ws/src/log/
+
+# Core dump files (crash dumps from ROS nodes)
+core
+dogzilla_ws/src/core
+dogzilla_ws/src/bringup/launch/core
+dogzilla_ws/src/yahboom_description/launch/core
+dogzilla_ws/src/yahboom_description/urdf/core
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
