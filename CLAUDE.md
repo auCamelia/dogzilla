@@ -49,11 +49,18 @@ python3 app_dogzilla.py debug    # verbose logging
 
 ### Docker (ROS dev environment)
 ```bash
-# ROS Humble container (passes /dev/ttyAMA0, /dev/video0, /dev/input)
+# ROS Humble container (Yahboom base image)
 cd ~/dogzilla/docker && ./run_humble.sh
 
-# SLAM container
-./run_slam.sh
+# Jazzy container — inclut slam-toolbox + navigation2
+./run_jazzy.sh              # mode robot (défaut)
+./run_jazzy.sh slam         # cartographie SLAM
+./run_jazzy.sh nav /root/maps/map.yaml  # navigation avec carte
+
+# Construire l'image jazzy (depuis la racine du projet)
+cd ~/dogzilla
+docker build -f docker/Dockerfile.jazzy -t dogzilla:jazzy .
+# DOGZILLALib.zip doit exister à la racine : zip -r DOGZILLALib.zip DOGZILLALib/
 ```
 
 ### ROS 2 Linting (per package)
