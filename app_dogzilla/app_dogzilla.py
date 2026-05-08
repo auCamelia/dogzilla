@@ -671,6 +671,15 @@ def init():
     return render_template('init.html')
 
 
+@app.route('/stream')
+def stream():
+    global g_mode
+    g_mode = 'Standard'
+    return '''<html><body style="margin:0;background:#000">
+<img src="/video_feed" style="width:100%;max-width:720px">
+</body></html>'''
+
+
 if __name__ == '__main__':
     task_1 = threading.Thread(target=task_press_up_handle, name="task_press_up")
     task_1.setDaemon(True)
