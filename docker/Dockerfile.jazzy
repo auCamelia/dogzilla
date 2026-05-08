@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-tf2-ros \
     ros-jazzy-xacro \
     ros-jazzy-rviz2 \
+    ros-jazzy-cv-bridge \
+    ros-jazzy-image-transport \
     ros-jazzy-slam-toolbox \
     ros-jazzy-navigation2 \
     ros-jazzy-nav2-bringup \
