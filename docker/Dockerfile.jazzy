@@ -35,7 +35,7 @@ RUN . /opt/ros/jazzy/setup.sh && \
     rosdep install --from-paths src --ignore-src -r -y || true
 
 RUN . /opt/ros/jazzy/setup.sh && \
-    colcon build --symlink-install --packages-skip oradar_lidar --parallel-workers 2 2>&1 | tee /tmp/build.log; \
+    colcon build --symlink-install --packages-skip oradar_lidar ydlidar_ros2_driver --parallel-workers 1 2>&1 | tee /tmp/build.log; \
     echo "Build terminé"
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
