@@ -8,6 +8,9 @@ dogzilla_ws/log/
 dogzilla_ws/src/build/
 dogzilla_ws/src/install/
 dogzilla_ws/src/log/
+yahboomcar_ws/build/
+yahboomcar_ws/install/
+yahboomcar_ws/log/
 
 # Core dump files (crash dumps from ROS nodes)
 core
