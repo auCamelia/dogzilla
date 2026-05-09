@@ -21,68 +21,58 @@
 
 ```mermaid
 graph TB
-    subgraph PC["💻  PC — ROS 2 Jazzy (native)"]
-        direction TB
+    subgraph CLIENTS["📱💻  Clients (any device on LAN)"]
+        direction LR
         Browser["🌐 Browser\nteleop.html :8080"]
-        RB["rosbridge_server :9090"]
-        Nav2["🧭 Nav2\n(autonomous navigation)"]
-        SLAM_PC["🗺️ slam_toolbox\n(map consumption)"]
-        RViz["📊 RViz2 — Digital Twin"]
-        Browser -- roslibjs WebSocket --> RB
-    end
-
-    subgraph BRIDGE["🔀  ROS 2 bridge layer  ·  always in the middle"]
-        direction LR
-        B1["yahboom_ctrl\n(real robot)"]
-        B2["gz_ros2_bridge\n(Gazebo simulation)"]
-    end
-
-    subgraph NET["🔗  LAN · ROS_DOMAIN_ID=0 · FastDDS unicast"]
-        direction LR
-        T1["/cmd_vel\n/dogzilla/*"]
-        T2["/scan · /odom · /tf · /map"]
+        Watch["⌚ Samsung Watch\nwatch.html :8080"]
+        NavPC["💻 PC — Nav2 + RViz2\n(optional, autonomous nav only)"]
     end
 
     subgraph PI["🍓  Raspberry Pi 5 — Docker dogzilla:jazzy"]
         direction TB
-        SLAM_PI["🗺️ slam_toolbox\n(cartography)"]
+        WS["web_server :8080\nteleop.html · watch.html"]
+        RB["rosbridge_server :9090\nroslibjs WebSocket"]
+        CTRL["yahboom_ctrl\n(hardware bridge)"]
         LIB["⚙️ DOGZILLALib\nserial /dev/ttyAMA0"]
         HW["🤖 Hardware — 12 DOF"]
+        SLAM_PI["🗺️ slam_toolbox\n(cartography)"]
+        CAM["usb_cam :video0"]
         LIDAR["📡 LiDAR"]
-        B1 --> LIB --> HW
+
+        WS -. "serves HTML" .-> Browser
+        WS -. "serves HTML" .-> Watch
+        RB -- topics --> CTRL
+        CTRL --> LIB --> HW
         LIDAR --> SLAM_PI
     end
 
-    subgraph SIM["🖥️  Gazebo (optional)"]
-        GZ["Simulated robot\n+ sensors"]
-        B2 --> GZ
-    end
-
-    RB  -- topics --> T1
-    Nav2 -- /cmd_vel --> T1
-    T1  --> B1
-    T1  -.->|swap bridge| B2
-    T2  --> RViz
-    T2  --> SLAM_PC
-    SLAM_PI -- /map /tf --> T2
-    LIDAR   -- /scan    --> T2
+    Browser -- "roslibjs ws:9090" --> RB
+    Watch   -- "roslibjs ws:9090" --> RB
+    NavPC   -- "/cmd_vel (DDS)" --> CTRL
+    SLAM_PI -- "/map /tf" --> NavPC
 ```
 
-> **Key design principle** — the bridge layer is always between the PC and the hardware.  
-> Teleop, Nav2 and any autonomous behaviour publish **only ROS 2 topics**.  
-> Swapping `yahboom_ctrl` for `gz_ros2_bridge` gives a full Gazebo simulation with zero PC-side changes.
+> **Key design principle — teleop lives on the Pi.**  
+> The browser (phone, tablet, PC, watch) is just a UI skin — it connects to `rosbridge` on the Pi and publishes standard ROS 2 topics.  
+> The PC is **optional**: only needed for Nav2 autonomous navigation or RViz2 digital-twin inspection.  
+> Swapping `yahboom_ctrl` for a Gazebo bridge gives a full simulation with zero client-side changes.
 
 ---
 
 ## Teleop Interface
 
-<div align="center">
+A dark-themed single-page app served directly from the Pi at `http://<pi-ip>:8080/teleop.html`.  
+A compact watch page is at `http://<pi-ip>:8080/watch.html` (optimised for Samsung Internet, 360×360 px).
 
-![Teleop UI](https://img.shields.io/badge/Interface-Web%20Browser-00aa50?style=flat-square&logo=googlechrome&logoColor=white)
+The interface adapts to the device automatically:
 
-</div>
+| Breakpoint | Layout |
+|---|---|
+| PC / large tablet (> 1050 px) | 3-column grid: D-pad · Camera+Posture · Actions |
+| Tablet (601–1050 px) | Same grid, smaller cells |
+| Mobile (≤ 600 px) | Tab bar — Drive (joystick + mini cam) / Posture / Actions |
 
-A dark-themed single-page app served at `http://localhost:8080/teleop.html`:
+**Controls:**
 
 | Zone | Controls |
 |---|---|
@@ -91,29 +81,19 @@ A dark-themed single-page app served at `http://localhost:8080/teleop.html`:
 | **Actions** | `1`–`9` keys or click — 19 motions (Stand Up, Crawl, Wave, Handshake …) |
 | **Reset** | `0` — restores initial posture |
 | **Sliders** | Translation X/Y/Z (mm) · Attitude Roll/Pitch/Yaw (°) |
+| **Camera** | Live MJPEG from `http://<pi-ip>:6500/video_feed` (auto-detected from rosbridge URL) |
 
-Connection URL is editable in the header — switch from `ws://localhost:9090` to `ws://<pi-ip>:9090` to drive the real robot.
+The rosbridge URL is auto-detected from the page hostname; the status dot in the header shows connection state.
 
 ---
 
 ## Quick Start
 
-### 1 — PC setup
-
-```bash
-# ROS 2 Jazzy + rosbridge
-sudo apt install ros-jazzy-desktop ros-jazzy-rosbridge-server
-
-# Build the teleop package
-cd ~/dogzilla/yahboomcar_ws
-colcon build --packages-select dogzilla_teleop
-source install/setup.bash
-```
-
-### 2 — Build & transfer the Docker image to the Pi
+### 1 — Build & transfer the Docker image to the Pi
 
 > Build happens on the PC (x86 → ARM64 cross-compilation via QEMU + buildx).  
-> The Pi image contains only: hardware bridge, sensors, slam-toolbox. **Nav2 is on the PC.**
+> The Pi image contains: hardware bridge · sensors · SLAM · **rosbridge + teleop web server**.  
+> Nav2 runs on the PC separately.
 
 ```bash
 # One-time setup
@@ -132,18 +112,18 @@ docker buildx build \
 
 # Transfer to Pi
 scp /tmp/dogzilla_jazzy_arm64.tar pi@<pi-ip>:~
-ssh pi@<pi-ip> docker load -i dogzilla_jazzy.tar
+ssh pi@<pi-ip> sudo docker load -i dogzilla_jazzy_arm64.tar
 ```
 
-### 3 — Launch the robot
+### 2 — Launch the robot
 
-Three usage modes are available. Pick based on your controller.
+Three usage modes are available. Pick based on your use case.
 
 ---
 
-#### Mode A — Smartphone direct (no ROS 2)
+#### Mode A — Smartphone direct (no ROS 2, no Docker)
 
-The simplest mode — no Docker, no ROS 2. The Pi controls hardware directly.
+The simplest mode — the Pi controls hardware directly via the Yahboom app.
 
 **Pi**
 ```bash
@@ -157,49 +137,68 @@ Open the Yahboom mobile app and connect to `<pi-ip>:6000`.
 
 ---
 
-#### Mode B — Browser teleop (ROS 2)
+#### Mode B — Browser / Watch teleop (ROS 2, Pi-only)
 
-The PC drives the robot through a web interface. `yahboom_ctrl` in Docker translates ROS 2 topics to hardware.
+The teleop web server and rosbridge run **on the Pi**. No PC required — any browser on the LAN controls the robot.
 
 **Pi**
 ```bash
 ./docker/run_jazzy.sh
-# inside the container:
-ros2 launch yahboom_base yahboom_base.launch.py
+# The container automatically starts:
+#   yahboom_ctrl · rosbridge :9090 · web_server :8080
 ```
 
-**PC**
-```bash
-source /opt/ros/jazzy/setup.bash
-source ~/dogzilla/yahboomcar_ws/install/setup.bash
-
-ros2 launch dogzilla_teleop teleop.launch.py
-# → opens http://localhost:8080/teleop.html automatically
+**Any client** (PC, phone, tablet, watch):
+```
+http://<pi-ip>:8080/teleop.html   ← full interface
+http://<pi-ip>:8080/watch.html    ← Samsung Watch / compact
 ```
 
-Change the rosbridge URL in the browser to `ws://<pi-ip>:9090` and the dot turns green.
+The page auto-connects to `ws://<pi-ip>:9090`. The status dot turns green when connected.
 
 ---
 
 #### Mode C — Smartphone + ROS 2 bridge
 
-Smartphone protocol as usual, but all commands flow through ROS 2 topics. Enables simultaneous Nav2 or other ROS nodes on the same stack.
+Yahboom mobile app commands flow through ROS 2 topics, enabling Nav2 or other nodes on the same stack.
 
 **Pi — two terminals**
 ```bash
-# Terminal 1 — Docker: hardware bridge
+# Terminal 1 — Docker: hardware bridge + teleop
 ./docker/run_jazzy.sh
-# inside the container:
-ros2 launch yahboom_base yahboom_base.launch.py
 
-# Terminal 2 — bare metal: smartphone server
+# Terminal 2 — bare metal: smartphone TCP bridge
 cd ~/app_dogzilla
 python3 app_dogzilla_ros2.py
 ```
 
 Open the Yahboom mobile app and connect to `<pi-ip>:6000`.
 
-> `app_dogzilla_ros2.py` does **not** open the serial port — it publishes topics that `yahboom_ctrl` (inside Docker) consumes. The two processes can coexist safely.
+> `app_dogzilla_ros2.py` publishes ROS 2 topics; it does **not** open the serial port.  
+> `yahboom_ctrl` (inside Docker) consumes those topics. The two processes coexist safely.
+
+---
+
+#### Mode D — Autonomous navigation (Nav2 on PC)
+
+Nav2 runs on the PC (more compute); the Pi runs robot + sensors only.
+
+**Pi**
+```bash
+./docker/run_jazzy.sh nav /root/maps/map.yaml
+```
+
+**PC — install Nav2 once, then launch**
+```bash
+sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+
+export ROS_DOMAIN_ID=0
+export FASTRTPS_DEFAULT_PROFILES_FILE=~/dogzilla/fastdds_unicast.xml
+
+ros2 launch dogzilla_nav navigation.launch.py map:=/path/to/map.yaml
+```
+
+Set a **2D Nav Goal** in RViz2 — Nav2 plans the path and sends `/cmd_vel` to the Pi.
 
 ---
 
@@ -209,7 +208,7 @@ Open the Yahboom mobile app and connect to `<pi-ip>:6000`.
 # Pi — start SLAM
 ./docker/run_jazzy.sh slam
 
-# PC — visualise in RViz2
+# PC — visualise in RViz2 (optional)
 export ROS_DOMAIN_ID=0
 export FASTRTPS_DEFAULT_PROFILES_FILE=~/dogzilla/fastdds_unicast.xml
 rviz2   # add: Map · LaserScan · RobotModel · TF
@@ -220,29 +219,8 @@ Drive the robot with the teleop interface while the map builds in RViz2.
 **Record a bag for offline SLAM tuning:**
 ```bash
 ros2 bag record /scan /odom /tf /tf_static -o slam_session
-ros2 bag play slam_session   # replay as many times as needed
+ros2 bag play slam_session
 ```
-
----
-
-## Autonomous Navigation
-
-Nav2 runs on the **PC** (more compute, keeps the Pi lean).  
-`yahboom_ctrl` on the Pi simply consumes `/cmd_vel` — same as teleop.
-
-```bash
-# PC — install Nav2 (once)
-sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup
-
-# Pi — robot mode only (no Nav2 in Docker image)
-./docker/run_jazzy.sh
-
-# PC — launch Nav2 with a saved map
-ros2 launch dogzilla_nav navigation.launch.py map:=/path/to/map.yaml
-```
-
-Set a **2D Nav Goal** in RViz2 — Nav2 plans the path and sends `/cmd_vel` to the Pi.  
-Set a 2D Nav Goal in RViz2 and the robot walks there on its own.
 
 ---
 
@@ -257,6 +235,47 @@ export FASTRTPS_DEFAULT_PROFILES_FILE=~/dogzilla/fastdds_unicast.xml
 
 `fastdds_unicast.xml` disables multicast (required on most Wi-Fi networks).  
 Edit `<address>` inside to set the Pi's static IP if needed.
+
+---
+
+## ROS 2 Node Reference
+
+### Pi Docker container (`dogzilla:jazzy`) — always running
+
+| Node | Package | Role |
+|---|---|---|
+| `yahboom_ctrl` | `yahboom_base` | **Hardware bridge** — subscribes `/cmd_vel` + `/dogzilla/*` topics, calls DOGZILLALib, sends serial frames to `/dev/ttyAMA0` |
+| `robot_state_publisher` | `robot_state_publisher` | Reads URDF, publishes `/tf_static` skeleton (links and joints) |
+| `yahboomcar_joint_state` | `yahboom_dog_joint_state` | Reads servo angles and onboard IMU from the robot, publishes `/joint_states` and `/imu/data_raw_self` |
+| `usb_cam_node_exe` | `usb_cam` | Opens `/dev/video0`, publishes `/image_raw` (+ `/image_raw/compressed`) |
+| `rosbridge_websocket` | `rosbridge_server` | WebSocket server `:9090` — translates roslibjs JSON ↔ ROS 2 DDS topics in real time |
+| `dogzilla_web_server` | `dogzilla_teleop` | HTTP server `:8080` — serves `teleop.html`, `watch.html`, `manifest.json`; no ROS logic |
+
+### Pi Docker container — SLAM mode only
+
+| Node | Package | Role |
+|---|---|---|
+| `slam_toolbox` | `slam_toolbox` | Online SLAM — fuses `/scan` + `/odom` + `/tf` to build and publish `/map` |
+| LiDAR driver | `oradar_lidar` or `ydlidar_ros2_driver` | Reads LiDAR hardware, publishes `/scan` |
+
+### PC (optional — Nav2 / digital twin)
+
+| Node | Package | Role |
+|---|---|---|
+| `nav2_bringup` | `nav2_bringup` | Full Nav2 stack — global planner, local planner, costmap; consumes `/map` from Pi, sends `/cmd_vel` |
+| `slam_toolbox` (localisation) | `slam_toolbox` | Loads a saved map and localises the robot in it (no new mapping) |
+| `rviz2` | `rviz2` | 3D visualisation — robot model, TF, laser, map, costmap, paths |
+
+### Perception nodes (optional, launch individually)
+
+| Node | Package | Role |
+|---|---|---|
+| `yahboom_color_tracking` | `yahboom_color_tracking` | Tracks a colored object in the camera frame, publishes `/cmd_vel` to follow it |
+| `yahboom_qrcode_tracking` | `yahboom_qrcode_tracking` | Detects a QR code and follows it |
+| `yahboom_mediapipe` | `yahboom_mediapipe` | Hand/pose/face landmark detection via MediaPipe, publishes `/mediapipe/points` |
+| `yahboom_publish` (C++) | `yahboom_publish` | Camera driver + image pipeline: publishes `/image_raw/compressed`, `/image_contours`, `/obj_msg` |
+| `yahboom_color_identify_server` | `yahboom_color_identify_server` | Service server `yahboomColorIdentify` — identifies dominant LAB color in a frame |
+| Laser tracker / avoider / warning | `yahboom_laser` | LiDAR-based obstacle avoidance, object following, proximity buzzer |
 
 ---
 
@@ -281,6 +300,7 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 | `/scan` | `sensor_msgs/LaserScan` | oradar/ydlidar driver | slam_toolbox · laser nodes | main mapping input |
 | `/joint_states` | `sensor_msgs/JointState` | `yahboomcar_joint_state` | robot_state_publisher | 12 DOF · lf/lh/rf/rh hip · upper/lower leg |
 | `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboomcar_joint_state` | Nav2 (PC) | orientation as quaternion from roll/pitch/yaw |
+| `/battery_voltage` | `std_msgs/Float32` | `yahboom_ctrl` | Teleop UI (via rosbridge) | displayed in browser header |
 | `/map` | `nav_msgs/OccupancyGrid` | slam_toolbox (Pi) | Nav2 · RViz2 (PC) | built during SLAM phase |
 | `/tf` · `/tf_static` | — | `tf_publisher` · robot_state_publisher | RViz2 · Nav2 | `base_footprint → base_link` (x:0.115m z:0.047m) |
 
@@ -307,14 +327,14 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 
 Two programs can run on the Pi as the startup entry point. They share the same Flask HTTP server (:6500), TCP smartphone socket (:6000), camera stream, joystick and OLED threads. The only difference is **how hardware commands reach the robot**.
 
-Place whichever you want in the `autostart` directory — only one runs at a time because both need exclusive access to the serial port (direct mode) or to `yahboom_ctrl` (ROS 2 mode).
+Only one can run at a time — both need exclusive access to the serial port (direct mode) or to `yahboom_ctrl` (ROS 2 mode).
 
 ---
 
 ### `app_dogzilla.py` — direct mode
 
 ```
-Smartphone / Browser
+Smartphone / Yahboom App
       │  TCP :6000  /  HTTP :6500
       ▼
 app_dogzilla.py
@@ -363,19 +383,19 @@ Startup sequence: `motor_speed(50)` → `action(14)` (Stretch animation).
 ### `app_dogzilla_ros2.py` — ROS 2 bridge mode
 
 ```
-Smartphone / Browser
+Smartphone / Yahboom App
       │  TCP :6000  /  HTTP :6500
       ▼
 app_dogzilla_ros2.py
       │  ROS 2 topics
       ▼
-yahboom_ctrl  (must be running)
+yahboom_ctrl  (running inside Docker)
       │  DOGZILLALib
       ▼
 /dev/ttyAMA0  →  hardware
 ```
 
-`DOGZILLA()` is replaced by `DogzillaROS2(Node)` — same Python API, but every call publishes a ROS 2 topic instead of writing to serial. `yahboom_ctrl` must be running in parallel (e.g. launched via `yahboom_base.launch.py` inside Docker).
+`DOGZILLA()` is replaced by `DogzillaROS2(Node)` — same Python API, but every call publishes a ROS 2 topic instead of writing to serial.
 
 **`DogzillaROS2` — published topics:**
 
@@ -422,18 +442,20 @@ ln -sf /path/to/app_dogzilla_ros2.py ~/autostart/app.py
 ```
 dogzilla/
 ├── DOGZILLALib/              hardware library — serial framing to /dev/ttyAMA0
-├── app_dogzilla/             legacy Flask app (port 6500)
+├── app_dogzilla/             legacy Flask app (port 6500) — direct or ROS 2 bridge mode
 ├── docker/
-│   ├── Dockerfile.jazzy      ROS Jazzy + slam-toolbox + nav2 (ARM64)
-│   └── run_jazzy.sh          container launcher — modes: robot / slam / nav
+│   ├── Dockerfile.jazzy      Pi image: ROS Jazzy + slam-toolbox + rosbridge + teleop
+│   ├── entrypoint.sh         default start: yahboom_ctrl + sensors + rosbridge + web_server
+│   ├── entrypoint_slam.sh    SLAM mode: adds slam_toolbox + lidar driver
+│   └── run_jazzy.sh          launcher — modes: robot (default) / slam / nav
 ├── samples/                  Jupyter notebooks (control, vision, LLM)
 ├── yahboomcar_ws/src/
-│   ├── dogzilla_teleop/      web teleop interface (PC only)
-│   ├── yahboom_base/         hardware bridge — yahboom_ctrl node (Pi)
+│   ├── dogzilla_teleop/      web teleop — serves teleop.html + watch.html on Pi :8080
+│   ├── yahboom_base/         hardware bridge — yahboom_ctrl node
 │   ├── yahboom_bringup/      SLAM + Nav2 launch files
 │   ├── yahboom_description/  URDF model
-│   └── …                     20+ additional ROS 2 packages
-├── fastdds_unicast.xml       DDS peer discovery for local network
+│   └── …                     20+ additional ROS 2 packages (perception, laser, mediapipe…)
+├── fastdds_unicast.xml       DDS peer discovery for local LAN (disables multicast)
 └── CLAUDE.md                 AI coding assistant guide
 ```
 
