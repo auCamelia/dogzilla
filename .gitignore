@@ -1,23 +1,13 @@
 # Claude Code
 .claude/
 
-# ROS 2 build artifacts
-dogzilla_ws/build/
-dogzilla_ws/install/
-dogzilla_ws/log/
-dogzilla_ws/src/build/
-dogzilla_ws/src/install/
-dogzilla_ws/src/log/
+# ROS 2 build artifacts (yahboomcar_ws is the only workspace)
 yahboomcar_ws/build/
 yahboomcar_ws/install/
 yahboomcar_ws/log/
 
-# Core dump files (crash dumps from ROS nodes)
+# Core dump files
 core
-dogzilla_ws/src/core
-dogzilla_ws/src/bringup/launch/core
-dogzilla_ws/src/yahboom_description/launch/core
-dogzilla_ws/src/yahboom_description/urdf/core
 
 # Python
 __pycache__/
