@@ -135,7 +135,38 @@ scp /tmp/dogzilla_jazzy_arm64.tar pi@<pi-ip>:~
 ssh pi@<pi-ip> docker load -i dogzilla_jazzy.tar
 ```
 
-### 3 — Launch teleop
+### 3 — Launch the robot
+
+Three usage modes are available. Pick based on your controller.
+
+---
+
+#### Mode A — Smartphone direct (no ROS 2)
+
+The simplest mode — no Docker, no ROS 2. The Pi controls hardware directly.
+
+**Pi**
+```bash
+cd ~/app_dogzilla
+python3 app_dogzilla.py
+```
+
+Open the Yahboom mobile app and connect to `<pi-ip>:6000`.
+
+> Do **not** run Docker / `yahboom_ctrl` at the same time — both need `/dev/ttyAMA0`.
+
+---
+
+#### Mode B — Browser teleop (ROS 2)
+
+The PC drives the robot through a web interface. `yahboom_ctrl` in Docker translates ROS 2 topics to hardware.
+
+**Pi**
+```bash
+./docker/run_jazzy.sh
+# inside the container:
+ros2 launch yahboom_base yahboom_base.launch.py
+```
 
 **PC**
 ```bash
@@ -146,15 +177,29 @@ ros2 launch dogzilla_teleop teleop.launch.py
 # → opens http://localhost:8080/teleop.html automatically
 ```
 
-**Pi** (inside Docker container)
-```bash
-./docker/run_jazzy.sh
+Change the rosbridge URL in the browser to `ws://<pi-ip>:9090` and the dot turns green.
 
+---
+
+#### Mode C — Smartphone + ROS 2 bridge
+
+Smartphone protocol as usual, but all commands flow through ROS 2 topics. Enables simultaneous Nav2 or other ROS nodes on the same stack.
+
+**Pi — two terminals**
+```bash
+# Terminal 1 — Docker: hardware bridge
+./docker/run_jazzy.sh
 # inside the container:
 ros2 launch yahboom_base yahboom_base.launch.py
+
+# Terminal 2 — bare metal: smartphone server
+cd ~/app_dogzilla
+python3 app_dogzilla_ros2.py
 ```
 
-Change the rosbridge URL in the browser to `ws://<pi-ip>:9090` and the dot turns green.
+Open the Yahboom mobile app and connect to `<pi-ip>:6000`.
+
+> `app_dogzilla_ros2.py` does **not** open the serial port — it publishes topics that `yahboom_ctrl` (inside Docker) consumes. The two processes can coexist safely.
 
 ---
 
