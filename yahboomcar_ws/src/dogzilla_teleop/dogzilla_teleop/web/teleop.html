@@ -121,7 +121,7 @@ header {
 .cam-dot.err { color: var(--danger); }
 .cam-wrap {
   position: relative; background: #080808;
-  border-radius: 4px; overflow: hidden; width: 100%; height: 200px;
+  border-radius: 4px; overflow: hidden; width: 100%; aspect-ratio: 4/3;
 }
 #cam-img {
   width: 100%; height: 100%; object-fit: contain;
@@ -235,27 +235,33 @@ footer {
 
 /* ═══ PC LAYOUT (default ≥1051px) ════════════════════════════════════════ */
 /*
-    [ drive  ] [ camera  ]
-    [ drive  ] [ posture ]
-    [ actions            ]
+    [ drive  ] [ camera  ] [ posture ]
+    [ actions                        ]
 */
 .main-layout {
   flex: 1; display: grid; min-height: 0; margin-bottom: 10px;
-  grid-template-columns: 295px 1fr;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 295px 1fr 1fr;
+  grid-template-rows: 1fr auto;
   gap: 10px;
 }
-.section-drive   { grid-column: 1; grid-row: 1 / 3; }
+.section-drive   { grid-column: 1; grid-row: 1; }
 .section-camera  { grid-column: 2; grid-row: 1; }
-.section-posture { grid-column: 2; grid-row: 2; overflow-y: auto; }
-.section-actions { grid-column: 1 / 3; grid-row: 3; }
+.section-posture { grid-column: 3; grid-row: 1; overflow-y: auto; }
+.section-actions { grid-column: 1 / 4; grid-row: 2; }
 
 /* ═══ TABLET (601–1050px) ════════════════════════════════════════════════ */
 @media (max-width: 1050px) and (min-width: 601px) {
-  .main-layout { grid-template-columns: 260px 1fr; }
+  /* tablet: drive | camera+posture stacked */
+  .main-layout {
+    grid-template-columns: 260px 1fr;
+    grid-template-rows: auto auto auto;
+  }
+  .section-drive   { grid-column: 1; grid-row: 1 / 3; }
+  .section-camera  { grid-column: 2; grid-row: 1; }
+  .section-posture { grid-column: 2; grid-row: 2; }
+  .section-actions { grid-column: 1 / 3; grid-row: 3; }
   .dpad { grid-template-columns: repeat(3, 76px); grid-template-rows: repeat(3, 48px); gap: 4px; }
   .dir-btn .key { font-size: 11px; }
-  .cam-wrap { height: 160px; }
   .actions-grid { grid-template-columns: repeat(4, 1fr); }
   .act-btn { font-size: 11px; padding: 9px 4px; }
 }
