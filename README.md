@@ -215,19 +215,46 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 
 ---
 
-## ROS 2 Topics Reference
+## ROS 2 Topics & Services
 
-| Topic | Type | Flow |
-|---|---|---|
-| `/cmd_vel` | `geometry_msgs/Twist` | PC → Pi |
-| `/dogzilla/action` | `std_msgs/Int32` | PC → Pi · 1–19 · 255=reset |
-| `/dogzilla/pace` | `std_msgs/String` | PC → Pi · `slow`/`normal`/`high` |
-| `/dogzilla/translation` | `geometry_msgs/Vector3` | PC → Pi · x±35 y±18 z75-115 mm |
-| `/dogzilla/attitude` | `geometry_msgs/Vector3` | PC → Pi · roll±20° pitch±15° yaw±11° |
-| `/scan` | `sensor_msgs/LaserScan` | Pi → PC |
-| `/odom` | `nav_msgs/Odometry` | Pi → PC |
-| `/tf`, `/tf_static` | — | Pi → PC |
-| `/map` | `nav_msgs/OccupancyGrid` | Pi → PC (SLAM / Nav mode) |
+### Motion Control
+
+| Topic | Type | Publisher | Subscriber | Notes |
+|---|---|---|---|---|
+| `/cmd_vel` | `geometry_msgs/Twist` | Teleop UI · Nav2 · laser nodes · color/QR trackers | `yahboom_ctrl` | main locomotion command |
+| `/dogzilla/action` | `std_msgs/Int32` | Teleop UI (rosbridge) | `yahboom_ctrl` | 1–19 motions · 255=reset |
+| `/dogzilla/pace` | `std_msgs/String` | Teleop UI (rosbridge) | `yahboom_ctrl` | `slow` / `normal` / `high` |
+| `/dogzilla/translation` | `geometry_msgs/Vector3` | Teleop UI (rosbridge) | `yahboom_ctrl` | x±35mm y±18mm z75-115mm |
+| `/dogzilla/attitude` | `geometry_msgs/Vector3` | Teleop UI (rosbridge) | `yahboom_ctrl` | roll±20° pitch±15° yaw±11° |
+| `/JoyState` | `std_msgs/Bool` | joystick node | laser tracker / avoidance / warning | enables autonomous laser modes |
+| `/Buzzer` | `std_msgs/Bool` | laser warning nodes | hardware | proximity alarm |
+
+### Sensors & State
+
+| Topic | Type | Publisher | Subscriber | Notes |
+|---|---|---|---|---|
+| `/scan` | `sensor_msgs/LaserScan` | oradar/ydlidar driver | slam_toolbox · laser nodes | main mapping input |
+| `/joint_states` | `sensor_msgs/JointState` | `yahboomcar_joint_state` | robot_state_publisher | 12 DOF · lf/lh/rf/rh hip · upper/lower leg |
+| `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboomcar_joint_state` | Nav2 (PC) | orientation as quaternion from roll/pitch/yaw |
+| `/map` | `nav_msgs/OccupancyGrid` | slam_toolbox (Pi) | Nav2 · RViz2 (PC) | built during SLAM phase |
+| `/tf` · `/tf_static` | — | `tf_publisher` · robot_state_publisher | RViz2 · Nav2 | `base_footprint → base_link` (x:0.115m z:0.047m) |
+
+### Perception
+
+| Topic | Type | Publisher | Subscriber | Notes |
+|---|---|---|---|---|
+| `/image_raw/compressed` | `sensor_msgs/CompressedImage` | `yahboom_publish` (C++ node) | qrcode tracker | raw camera MJPEG |
+| `/image_contours` | `sensor_msgs/CompressedImage` | `yahboom_publish` | `yahboom_color_tracking` | contours drawn over frame |
+| `/obj_msg` | `image_color_lab/StringStamped` | `yahboom_publish` | color tracker · QR tracker | JSON: area, center_x/y, img_w/h, movement |
+| `/lab_set` | `std_msgs/String` | external / UI | `yahboom_publish` | LAB color range params for segmentation |
+| `/mediapipe/points` | `yahboom_msgs/PointArray` | HandDetector · PoseDetector · Holistic · FaceMesh | any consumer | MediaPipe landmarks (hand/pose/face) |
+
+### Services
+
+| Service | Type | Server | Client | Notes |
+|---|---|---|---|---|
+| `yahboomSetAttiude` | `yahboom_attitude_record_interfaces/AttuitudeRecord` | attitude record node | `yahboom_color_tracking` | set pitch/yaw during tracking · req: pitch+yaw int64 · res: string |
+| `yahboomColorIdentify` | `yahboom_color_identify_interfaces/ColorIdentify` | `yahboom_color_identify_server` | color tracking nodes | identify dominant color in frame · req: if_identify string |
 
 ---
 
