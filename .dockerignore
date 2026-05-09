@@ -1,0 +1,20 @@
+.git
+.github
+
+# colcon artifacts — rebuilt inside the image
+yahboomcar_ws/build/
+yahboomcar_ws/install/
+yahboomcar_ws/log/
+
+# PC-only / dev files
+samples/
+app_dogzilla/
+*.tar
+*.tar.gz
+*.png
+*.step
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
