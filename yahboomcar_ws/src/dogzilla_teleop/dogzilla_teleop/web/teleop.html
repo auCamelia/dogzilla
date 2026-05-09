@@ -328,7 +328,7 @@ footer {
 
     <!-- camera preview (mobile only) -->
     <div class="cam-mini">
-      <img id="cam-img-m" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+      <img id="cam-img-m" alt="" style="display:none">
       <div class="cam-ph">No camera · connect to Pi</div>
     </div>
 
@@ -393,13 +393,11 @@ footer {
     <div class="cam-header">
       <div class="section-title" style="margin:0">Camera</div>
       <span class="cam-dot" id="cam-dot">●</span>
-      <span style="font-size:10px;color:var(--dim);margin-left:auto" id="cam-host">:6500/video_feed</span>
+      <span style="font-size:10px;color:var(--dim);margin-left:auto" id="cam-fps"></span>
     </div>
     <div class="cam-wrap">
-      <img id="cam-img" alt=""
-           onerror="camStatus('err')"
-           onload="camStatus('ok')">
-      <div class="cam-ph" id="cam-ph">Connect to Pi — app_dogzilla must be running (:6500)</div>
+      <img id="cam-img" alt="">
+      <div class="cam-ph" id="cam-ph">Connect to Pi — waiting for /image_raw/compressed</div>
     </div>
   </div>
 
@@ -502,26 +500,8 @@ footer {
   }
 })();
 
-// ─── CAMERA ───────────────────────────────────────────────────────────────
-function getCamUrl() {
-  const rb = document.getElementById('conn-url').value.trim();
-  try {
-    const host = new URL(rb.replace(/^ws/, 'http')).hostname;
-    return 'http://' + host + ':6500/video_feed';
-  } catch (_) { return ''; }
-}
-
-function updateCam() {
-  const src = getCamUrl();
-  if (!src) return;
-  const hostLabel = document.getElementById('cam-host');
-  if (hostLabel) hostLabel.textContent = src.replace(/^http:\/\/[^/]+/, '');
-
-  const img  = document.getElementById('cam-img');
-  const imgM = document.getElementById('cam-img-m');
-  if (img)  img.src  = src;
-  if (imgM) imgM.src = src;
-}
+// ─── CAMERA (via rosbridge /image_raw/compressed) ─────────────────────────
+let camTopic = null, camFrames = 0;
 
 function camStatus(s) {
   const dot = document.getElementById('cam-dot');
@@ -538,6 +518,33 @@ function camStatus(s) {
   }
 }
 
+function startCam() {
+  if (camTopic) { camTopic.unsubscribe(); camTopic = null; }
+  camTopic = new ROSLIB.Topic({
+    ros, name: '/image_raw/compressed',
+    messageType: 'sensor_msgs/CompressedImage',
+    throttle_rate: 80,   // ~12 fps max
+    queue_length: 1
+  });
+  camTopic.subscribe(msg => {
+    const img  = document.getElementById('cam-img');
+    const imgM = document.getElementById('cam-img-m');
+    const src  = 'data:image/jpeg;base64,' + msg.data;
+    if (img)  { img.src  = src; img.style.display  = 'block'; }
+    if (imgM) { imgM.src = src; imgM.style.display = 'block'; }
+    const ph = document.getElementById('cam-ph');
+    if (ph) ph.style.display = 'none';
+    camFrames++;
+    camStatus('ok');
+  });
+}
+
+// fps counter
+setInterval(() => {
+  const el = document.getElementById('cam-fps');
+  if (el && camFrames > 0) { el.textContent = camFrames + ' fps'; camFrames = 0; }
+}, 1000);
+
 // ─── ROS STATE ────────────────────────────────────────────────────────────
 let ros = null, pubCmdVel, pubAction, pubPace, pubTrans, pubAtt;
 
@@ -546,7 +553,7 @@ function connect() {
   const url = document.getElementById('conn-url').value.trim();
   setConnStatus('wait');
   ros = new ROSLIB.Ros({ url });
-  ros.on('connection', () => { setConnStatus('ok'); setupTopics(); updateCam(); });
+  ros.on('connection', () => { setConnStatus('ok'); setupTopics(); startCam(); });
   ros.on('error',      () => setConnStatus('err'));
   ros.on('close',      () => setConnStatus('off'));
 }
