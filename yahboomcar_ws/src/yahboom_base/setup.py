@@ -24,6 +24,7 @@ setup(
         'console_scripts': [
             'talker = yahboom_base.publisher_member_function:main',
             'base = yahboom_base.base:main',
+            'ctrl = yahboom_base.yahboom_ctrl:main',
         ],
     },
 )

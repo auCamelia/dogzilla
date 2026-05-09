@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dogzilla Teleop</title>
+<script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #1c1c1c;
+    --panel:   #2a2a2a;
+    --border:  #3a3a3a;
+    --active:  #00aa50;
+    --warn:    #c88200;
+    --danger:  #be2828;
+    --text:    #e6e6e6;
+    --dim:     #6e6e6e;
+    --track:   #3a3a3a;
+    --thumb:   #5a5a5a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 12px;
+    user-select: none;
+  }
+
+  /* ── header ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 18px; letter-spacing: 3px; color: white; }
+  #conn-url {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    width: 200px;
+    border-radius: 4px;
+  }
+  #conn-btn {
+    padding: 4px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 4px;
+    font-family: inherit;
+  }
+  #conn-btn:hover { background: var(--border); }
+  #conn-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #conn-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--danger);
+    transition: background 0.3s;
+  }
+  #conn-dot.ok { background: var(--active); }
+
+  /* ── main layout ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  /* ── panels ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  .panel-title {
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  /* ── pace ── */
+  .pace-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .pace-btn {
+    flex: 1;
+    padding: 7px 0;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 5px;
+    font-family: inherit;
+    font-weight: bold;
+    letter-spacing: 1px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .pace-btn:hover { background: var(--border); }
+  .pace-btn.active { background: var(--active); border-color: var(--active); color: white; }
+
+  /* ── d-pad ── */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 90px);
+    grid-template-rows: repeat(3, 42px);
+    gap: 5px;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+  .dir-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
+    transition: background 0.1s, border-color 0.1s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dir-btn:active, .dir-btn.pressed { background: var(--active); border-color: var(--active); color: white; }
+  .dir-btn.stop-btn { background: rgba(200,130,0,0.2); border-color: var(--warn); }
+  .dir-btn.stop-btn:active { background: var(--warn); }
+  .dir-empty { visibility: hidden; }
+
+  /* ── status ── */
+  .status-bar {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .status-bar span { color: var(--dim); font-size: 11px; }
+  .status-bar .val { color: var(--text); font-weight: bold; }
+
+  /* ── sliders ── */
+  .slider-group { margin-bottom: 14px; }
+  .slider-group:last-child { margin-bottom: 0; }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .slider-label { width: 68px; color: var(--dim); font-size: 12px; flex-shrink: 0; }
+  .slider-val   { width: 46px; text-align: right; color: white; font-size: 12px; flex-shrink: 0; }
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: var(--track);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px; height: 16px;
+    background: var(--thumb);
+    border-radius: 50%;
+    transition: background 0.15s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { background: var(--text); }
+
+  .slider-separator {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 10px 0 14px;
+  }
+
+  /* ── actions ── */
+  .actions-panel { padding: 12px; }
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+  }
+  .act-btn {
+    padding: 8px 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    cursor: pointer;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 11px;
+    text-align: center;
+    transition: background 0.1s;
+  }
+  .act-btn:hover { background: var(--border); }
+  .act-btn:active { background: var(--active); border-color: var(--active); }
+  .act-btn.reset-btn {
+    background: rgba(190,40,40,0.2);
+    border-color: var(--danger);
+    color: var(--danger);
+    font-weight: bold;
+  }
+  .act-btn.reset-btn:hover { background: var(--danger); color: white; }
+
+  /* ── footer ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    color: var(--dim);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>DOGZILLA  TELEOP</h1>
+  <input id="conn-url" type="text" value="ws://localhost:9090">
+  <button id="conn-btn" onclick="connect()">Connect</button>
+  <div id="conn-status">
+    <div id="conn-dot"></div>
+    <span id="conn-label">Disconnected</span>
+  </div>
+</header>
+
+<div class="main-grid">
+
+  <!-- left column: pace + dpad + status -->
+  <div>
+    <div class="panel" style="margin-bottom:10px">
+      <div class="panel-title">Pace</div>
+      <div class="pace-row">
+        <button class="pace-btn" data-pace="slow"   onclick="setPace('slow')">SLOW</button>
+        <button class="pace-btn active" data-pace="normal" onclick="setPace('normal')">NORMAL</button>
+        <button class="pace-btn" data-pace="high"   onclick="setPace('high')">HIGH</button>
+      </div>
+      <div class="panel-title">Movement  <span style="font-size:10px">(keyboard: Z S Q D A E · Space=stop)</span></div>
+      <div class="dpad">
+        <button class="dir-btn" id="btn-tl"    data-dir="tl">A<br>Turn L</button>
+        <button class="dir-btn" id="btn-fwd"   data-dir="fwd">Z / ↑<br>Forward</button>
+        <button class="dir-btn" id="btn-tr"    data-dir="tr">Turn R<br>E</button>
+        <button class="dir-btn" id="btn-left"  data-dir="left">Q / ←<br>Left</button>
+        <button class="dir-btn stop-btn" id="btn-stop" data-dir="stop">■ STOP</button>
+        <button class="dir-btn" id="btn-right" data-dir="right">Right<br>D / →</button>
+        <div class="dir-empty"></div>
+        <button class="dir-btn" id="btn-back"  data-dir="back">S / ↓<br>Back</button>
+        <div class="dir-empty"></div>
+      </div>
+      <div class="status-bar">
+        <span>vx</span><span class="val" id="st-vx">+0.00</span>
+        <span>vy</span><span class="val" id="st-vy">+0.00</span>
+        <span>wz</span><span class="val" id="st-wz">+0.00</span>
+        <span>pace</span><span class="val" id="st-pace">normal</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- right column: sliders -->
+  <div class="panel">
+    <div class="panel-title">Translation (mm)</div>
+    <div class="slider-group">
+      <div class="slider-row">
+        <span class="slider-label">X  <small>±35</small></span>
+        <input type="range" id="sl-tx" min="-35" max="35" value="0" step="1" oninput="onTranslation()">
+        <span class="slider-val" id="lbl-tx">+0</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Y  <small>±18</small></span>
+        <input type="range" id="sl-ty" min="-18" max="18" value="0" step="1" oninput="onTranslation()">
+        <span class="slider-val" id="lbl-ty">+0</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Z  <small>75–115</small></span>
+        <input type="range" id="sl-tz" min="75" max="115" value="105" step="1" oninput="onTranslation()">
+        <span class="slider-val" id="lbl-tz">+105</span>
+      </div>
+    </div>
+    <hr class="slider-separator">
+    <div class="panel-title">Attitude (°)</div>
+    <div class="slider-group">
+      <div class="slider-row">
+        <span class="slider-label">Roll  <small>±20°</small></span>
+        <input type="range" id="sl-roll" min="-20" max="20" value="0" step="1" oninput="onAttitude()">
+        <span class="slider-val" id="lbl-roll">+0</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Pitch <small>±15°</small></span>
+        <input type="range" id="sl-pitch" min="-15" max="15" value="0" step="1" oninput="onAttitude()">
+        <span class="slider-val" id="lbl-pitch">+0</span>
+      </div>
+      <div class="slider-row">
+        <span class="slider-label">Yaw  <small>±11°</small></span>
+        <input type="range" id="sl-yaw" min="-11" max="11" value="0" step="1" oninput="onAttitude()">
+        <span class="slider-val" id="lbl-yaw">+0</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- actions -->
+<div class="panel actions-panel" style="margin-bottom:10px">
+  <div class="panel-title">Actions  <span style="font-size:10px">(keys 1–9)</span></div>
+  <div class="actions-grid">
+    <button class="act-btn" onclick="sendAction(1)">1 Lie Down</button>
+    <button class="act-btn" onclick="sendAction(2)">2 Stand Up</button>
+    <button class="act-btn" onclick="sendAction(3)">3 Crawl</button>
+    <button class="act-btn" onclick="sendAction(4)">4 Turn Around</button>
+    <button class="act-btn" onclick="sendAction(5)">5 Mark Time</button>
+    <button class="act-btn" onclick="sendAction(6)">6 Squat</button>
+    <button class="act-btn" onclick="sendAction(7)">7 Roll</button>
+    <button class="act-btn" onclick="sendAction(8)">8 Pitch</button>
+    <button class="act-btn" onclick="sendAction(9)">9 Yaw</button>
+    <button class="act-btn" onclick="sendAction(10)">3-Axis</button>
+    <button class="act-btn" onclick="sendAction(11)">Pee</button>
+    <button class="act-btn" onclick="sendAction(12)">Sit Down</button>
+    <button class="act-btn" onclick="sendAction(13)">Wave</button>
+    <button class="act-btn" onclick="sendAction(14)">Stretch</button>
+    <button class="act-btn" onclick="sendAction(15)">Wave Body</button>
+    <button class="act-btn" onclick="sendAction(16)">Swing</button>
+    <button class="act-btn" onclick="sendAction(17)">Pray</button>
+    <button class="act-btn" onclick="sendAction(18)">Seek</button>
+    <button class="act-btn" onclick="sendAction(19)">Handshake</button>
+    <button class="act-btn reset-btn" onclick="sendAction(255)">0 RESET</button>
+  </div>
+</div>
+
+<footer>
+  <span>Z/↑ fwd · S/↓ back · Q/← left · D/→ right · A turn-L · E turn-R · Space stop</span>
+  <span>F1 slow · F2 normal · F3 high · 1–9 actions · 0 reset</span>
+</footer>
+
+<script>
+// ── speeds ────────────────────────────────────────────────────────────────────
+const VX = 0.5, VY = 0.45, WZ = 1.0;
+const DIR_VEL = {
+  fwd:   [VX,   0,    0],
+  back:  [-VX,  0,    0],
+  left:  [0,    VY,   0],
+  right: [0,   -VY,   0],
+  tl:    [0,    0,    WZ],
+  tr:    [0,    0,   -WZ],
+  stop:  [0,    0,    0],
+};
+const KEY_DIR = {
+  'z':'fwd', 'ArrowUp':'fwd',
+  's':'back','ArrowDown':'back',
+  'q':'left','ArrowLeft':'left',
+  'd':'right','ArrowRight':'right',
+  'a':'tl', 'e':'tr',
+};
+
+// ── ROS state ─────────────────────────────────────────────────────────────────
+let ros = null;
+let pubCmdVel, pubAction, pubPace, pubTrans, pubAtt;
+
+function connect() {
+  if (ros) { ros.close(); ros = null; }
+  const url = document.getElementById('conn-url').value.trim();
+  ros = new ROSLIB.Ros({ url });
+
+  ros.on('connection', () => setStatus(true));
+  ros.on('error',      () => setStatus(false));
+  ros.on('close',      () => setStatus(false));
+
+  const mkTopic = (name, type) => new ROSLIB.Topic({ ros, name, messageType: type });
+  pubCmdVel = mkTopic('/cmd_vel',              'geometry_msgs/Twist');
+  pubAction  = mkTopic('/dogzilla/action',     'std_msgs/Int32');
+  pubPace    = mkTopic('/dogzilla/pace',       'std_msgs/String');
+  pubTrans   = mkTopic('/dogzilla/translation','geometry_msgs/Vector3');
+  pubAtt     = mkTopic('/dogzilla/attitude',   'geometry_msgs/Vector3');
+}
+
+function setStatus(ok) {
+  document.getElementById('conn-dot').className   = ok ? 'ok' : '';
+  document.getElementById('conn-label').textContent = ok ? 'Connected' : 'Disconnected';
+}
+
+// ── velocity ──────────────────────────────────────────────────────────────────
+let curVx = 0, curVy = 0, curWz = 0;
+const keysDown = new Set();
+
+function publishVel(vx, vy, wz) {
+  curVx = vx; curVy = vy; curWz = wz;
+  document.getElementById('st-vx').textContent = (vx >= 0 ? '+' : '') + vx.toFixed(2);
+  document.getElementById('st-vy').textContent = (vy >= 0 ? '+' : '') + vy.toFixed(2);
+  document.getElementById('st-wz').textContent = (wz >= 0 ? '+' : '') + wz.toFixed(2);
+  updateDpadHighlight();
+  if (!pubCmdVel) return;
+  pubCmdVel.publish(new ROSLIB.Message({
+    linear:  { x: vx, y: vy,  z: 0 },
+    angular: { x: 0,  y: 0,   z: wz },
+  }));
+}
+
+function velFromKeys() {
+  let vx = 0, vy = 0, wz = 0;
+  for (const dir of keysDown) {
+    const v = DIR_VEL[dir];
+    if (v) { vx += v[0]; vy += v[1]; wz += v[2]; }
+  }
+  return [vx, vy, wz];
+}
+
+// 10 Hz loop
+setInterval(() => {
+  if (keysDown.size > 0) publishVel(...velFromKeys());
+}, 100);
+
+// ── keyboard ──────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.repeat) return;
+
+  if (e.key === ' ')  { e.preventDefault(); stopRobot(); return; }
+  if (e.key === 'F1') { e.preventDefault(); setPace('slow');   return; }
+  if (e.key === 'F2') { e.preventDefault(); setPace('normal'); return; }
+  if (e.key === 'F3') { e.preventDefault(); setPace('high');   return; }
+  if (e.key === '0')  { sendAction(255); return; }
+  const n = parseInt(e.key);
+  if (n >= 1 && n <= 9) { sendAction(n); return; }
+
+  const dir = KEY_DIR[e.key];
+  if (dir) { e.preventDefault(); keysDown.add(dir); highlightDpad(dir, true); }
+});
+
+document.addEventListener('keyup', e => {
+  const dir = KEY_DIR[e.key];
+  if (dir) {
+    keysDown.delete(dir);
+    highlightDpad(dir, false);
+    if (keysDown.size === 0) publishVel(0, 0, 0);
+  }
+});
+
+// ── d-pad buttons ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.dir-btn[data-dir]').forEach(btn => {
+  const dir = btn.dataset.dir;
+  btn.addEventListener('mousedown', () => {
+    if (dir === 'stop') { stopRobot(); return; }
+    keysDown.add(dir);
+    publishVel(...velFromKeys());
+  });
+  btn.addEventListener('mouseup',   () => { keysDown.delete(dir); if (!keysDown.size) publishVel(0,0,0); });
+  btn.addEventListener('mouseleave',() => { keysDown.delete(dir); if (!keysDown.size) publishVel(0,0,0); });
+});
+
+function stopRobot() { keysDown.clear(); publishVel(0, 0, 0); }
+
+function highlightDpad(dir, on) {
+  const btn = document.getElementById('btn-' + dir);
+  if (btn) btn.classList.toggle('pressed', on);
+}
+
+function updateDpadHighlight() {
+  ['fwd','back','left','right','tl','tr'].forEach(d => {
+    const v = DIR_VEL[d];
+    const active = keysDown.has(d);
+    highlightDpad(d, active);
+  });
+}
+
+// ── pace ──────────────────────────────────────────────────────────────────────
+function setPace(mode) {
+  document.querySelectorAll('.pace-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.pace === mode));
+  document.getElementById('st-pace').textContent = mode;
+  if (pubPace) pubPace.publish(new ROSLIB.Message({ data: mode }));
+}
+
+// ── actions ───────────────────────────────────────────────────────────────────
+function sendAction(id) {
+  if (pubAction) pubAction.publish(new ROSLIB.Message({ data: id }));
+}
+
+// ── sliders ───────────────────────────────────────────────────────────────────
+function onTranslation() {
+  const tx = +document.getElementById('sl-tx').value;
+  const ty = +document.getElementById('sl-ty').value;
+  const tz = +document.getElementById('sl-tz').value;
+  document.getElementById('lbl-tx').textContent = (tx >= 0 ? '+' : '') + tx;
+  document.getElementById('lbl-ty').textContent = (ty >= 0 ? '+' : '') + ty;
+  document.getElementById('lbl-tz').textContent = (tz >= 0 ? '+' : '') + tz;
+  if (pubTrans) pubTrans.publish(new ROSLIB.Message({ x: tx, y: ty, z: tz }));
+}
+
+function onAttitude() {
+  const r = +document.getElementById('sl-roll').value;
+  const p = +document.getElementById('sl-pitch').value;
+  const y = +document.getElementById('sl-yaw').value;
+  document.getElementById('lbl-roll').textContent  = (r >= 0 ? '+' : '') + r;
+  document.getElementById('lbl-pitch').textContent = (p >= 0 ? '+' : '') + p;
+  document.getElementById('lbl-yaw').textContent   = (y >= 0 ? '+' : '') + y;
+  if (pubAtt) pubAtt.publish(new ROSLIB.Message({ x: r, y: p, z: y }));
+}
+
+// ── auto-connect on load ──────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
