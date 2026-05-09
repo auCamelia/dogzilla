@@ -26,7 +26,9 @@ class WebServer(Node):
         self._httpd.allow_reuse_address = True
 
         threading.Thread(target=self._httpd.serve_forever, daemon=True).start()
-        self.get_logger().info(f'Teleop UI → http://localhost:{port}/teleop.html')
+        self.get_logger().info(f'PC      → http://localhost:{port}/teleop.html')
+        self.get_logger().info(f'Mobile  → http://<pi-ip>:{port}/teleop.html  (PWA)')
+        self.get_logger().info(f'Watch   → http://<pi-ip>:{port}/watch.html   (Samsung Internet)')
 
         if open_browser:
             webbrowser.open(f'http://localhost:{port}/teleop.html')
