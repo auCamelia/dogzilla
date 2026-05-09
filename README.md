@@ -24,41 +24,53 @@ graph TB
     subgraph PC["💻  PC — ROS 2 Jazzy (native)"]
         direction TB
         Browser["🌐 Browser\nteleop.html :8080"]
-        RB["rosbridge_server\nWebSocket :9090"]
-        RViz["📊 RViz2\nDigital Twin"]
-        Browser -- roslibjs --> RB
+        RB["rosbridge_server :9090"]
+        Nav2["🧭 Nav2\n(autonomous navigation)"]
+        SLAM_PC["🗺️ slam_toolbox\n(map consumption)"]
+        RViz["📊 RViz2 — Digital Twin"]
+        Browser -- roslibjs WebSocket --> RB
     end
 
-    subgraph NET["🔗  Local Network  ·  ROS_DOMAIN_ID=0  ·  FastDDS unicast"]
+    subgraph BRIDGE["🔀  ROS 2 bridge layer  ·  always in the middle"]
         direction LR
-        T1["/cmd_vel"]
-        T2["/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude"]
-        T3["/scan  /odom\n/tf   /map"]
+        B1["yahboom_ctrl\n(real robot)"]
+        B2["gz_ros2_bridge\n(Gazebo simulation)"]
+    end
+
+    subgraph NET["🔗  LAN · ROS_DOMAIN_ID=0 · FastDDS unicast"]
+        direction LR
+        T1["/cmd_vel\n/dogzilla/*"]
+        T2["/scan · /odom · /tf · /map"]
     end
 
     subgraph PI["🍓  Raspberry Pi 5 — Docker dogzilla:jazzy"]
         direction TB
-        CTRL["yahboom_ctrl\nROS 2 ↔ DOGZILLALib bridge"]
-        LIB["⚙️  DOGZILLALib\nserial /dev/ttyAMA0 · 115200 baud"]
-        HW["🤖  Hardware\n12 servos · 4 legs"]
-        SLAM["🗺️  slam_toolbox"]
-        NAV["🧭  nav2"]
-        LIDAR["📡  LiDAR  /scan"]
-
-        CTRL --> LIB --> HW
-        LIDAR --> SLAM
-        NAV -- /cmd_vel --> CTRL
+        SLAM_PI["🗺️ slam_toolbox\n(cartography)"]
+        LIB["⚙️ DOGZILLALib\nserial /dev/ttyAMA0"]
+        HW["🤖 Hardware — 12 DOF"]
+        LIDAR["📡 LiDAR"]
+        B1 --> LIB --> HW
+        LIDAR --> SLAM_PI
     end
 
-    RB -- ROS 2 --> T1 & T2
-    T1 & T2 --> CTRL
-    T3 --> RViz
-    SLAM -- /map /tf --> T3
-    LIDAR -- /scan --> T3
+    subgraph SIM["🖥️  Gazebo (optional)"]
+        GZ["Simulated robot\n+ sensors"]
+        B2 --> GZ
+    end
+
+    RB  -- topics --> T1
+    Nav2 -- /cmd_vel --> T1
+    T1  --> B1
+    T1  -.->|swap bridge| B2
+    T2  --> RViz
+    T2  --> SLAM_PC
+    SLAM_PI -- /map /tf --> T2
+    LIDAR   -- /scan    --> T2
 ```
 
-The **browser** is the only thing running on the PC — no ROS node, no Python script.  
-`roslibjs` speaks directly to `rosbridge` over WebSocket, which forwards messages into the ROS 2 graph shared across the network with the Pi.
+> **Key design principle** — the bridge layer is always between the PC and the hardware.  
+> Teleop, Nav2 and any autonomous behaviour publish **only ROS 2 topics**.  
+> Swapping `yahboom_ctrl` for `gz_ros2_bridge` gives a full Gazebo simulation with zero PC-side changes.
 
 ---
 
@@ -100,7 +112,8 @@ source install/setup.bash
 
 ### 2 — Build & transfer the Docker image to the Pi
 
-> Build happens on the PC (x86 → ARM64 cross-compilation via QEMU + buildx)
+> Build happens on the PC (x86 → ARM64 cross-compilation via QEMU + buildx).  
+> The Pi image contains only: hardware bridge, sensors, slam-toolbox. **Nav2 is on the PC.**
 
 ```bash
 # One-time setup
@@ -169,12 +182,21 @@ ros2 bag play slam_session   # replay as many times as needed
 
 ## Autonomous Navigation
 
+Nav2 runs on the **PC** (more compute, keeps the Pi lean).  
+`yahboom_ctrl` on the Pi simply consumes `/cmd_vel` — same as teleop.
+
 ```bash
-# Pi — load a saved map and start Nav2
-./docker/run_jazzy.sh nav /root/maps/map.yaml
+# PC — install Nav2 (once)
+sudo apt install ros-jazzy-navigation2 ros-jazzy-nav2-bringup
+
+# Pi — robot mode only (no Nav2 in Docker image)
+./docker/run_jazzy.sh
+
+# PC — launch Nav2 with a saved map
+ros2 launch dogzilla_nav navigation.launch.py map:=/path/to/map.yaml
 ```
 
-Nav2 publishes on `/cmd_vel` — `yahboom_ctrl` consumes it automatically.  
+Set a **2D Nav Goal** in RViz2 — Nav2 plans the path and sends `/cmd_vel` to the Pi.  
 Set a 2D Nav Goal in RViz2 and the robot walks there on its own.
 
 ---
