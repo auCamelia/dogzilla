@@ -16,7 +16,6 @@ docker run -it \
   --net=host \
   --env="ROS_DOMAIN_ID=0" \
   --env="MODE=${MODE}" \
-  -v /home/pi/yahboomcar_ws/src:/root/yahboomcar_ws/src \
   -v /home/pi/maps:/root/maps \
   --device=/dev/ttyAMA1 \
   --device=/dev/ttyAMA0 \
