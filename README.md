@@ -258,6 +258,120 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 
 ---
 
+## Pi Startup Programs
+
+Two programs can run on the Pi as the startup entry point. They share the same Flask HTTP server (:6500), TCP smartphone socket (:6000), camera stream, joystick and OLED threads. The only difference is **how hardware commands reach the robot**.
+
+Place whichever you want in the `autostart` directory — only one runs at a time because both need exclusive access to the serial port (direct mode) or to `yahboom_ctrl` (ROS 2 mode).
+
+---
+
+### `app_dogzilla.py` — direct mode
+
+```
+Smartphone / Browser
+      │  TCP :6000  /  HTTP :6500
+      ▼
+app_dogzilla.py
+      │  DOGZILLALib
+      ▼
+/dev/ttyAMA0  →  hardware
+```
+
+`DOGZILLA()` is instantiated at module level and used directly throughout. Every TCP command translates immediately to a serial frame — no ROS 2 involved.
+
+**Threads started at launch:**
+
+| Thread | Role |
+|---|---|
+| `task_press_up` | Push-up animation loop (action 20) |
+| `task_joystick` | USB joystick → DOGZILLALib |
+| `task_oled` | OLED display (if systemd unit not active) |
+| `task_tcp` (daemon) | TCP server :6000 — spawned on first `/init` call |
+| Gevent WSGIServer | Flask HTTP :6500 — main thread |
+
+**TCP protocol (ASCII frames `$<TYPE><CMD><LEN><DATA><CHK>#`):**
+
+| Command | What it does |
+|---|---|
+| `0F` | Switch mode (Home / Standard / Fullscreen / Motor / Leg) |
+| `02` | Request battery voltage |
+| `11` | Joystick move — nx/ny → `move_x` / `move_y` |
+| `12` | D-pad button — forward / back / left / right / turn L / turn R / stop |
+| `13` | Step scale (20–100) |
+| `14` | Pace frequency — 1=slow (Z→75mm) · 2=normal · 3=high |
+| `15` | IMU stabilisation on/off |
+| `21` | Attitude — joystick tilt → roll/pitch |
+| `22` | Body height Z (75–110 mm) |
+| `23` | Shoulder yaw (±11°) |
+| `31` | Action 1–19 · 0=reset · 20=push-up animation |
+| `32` | Continuous performance (carousel) on/off |
+| `33` | Leg reset / full reset |
+| `41` | Individual servo — forwarded to `motor()` |
+| `51` | Individual leg — forwarded to `leg()` |
+| `AA` | Calibration mode |
+
+Startup sequence: `motor_speed(50)` → `action(14)` (Stretch animation).
+
+---
+
+### `app_dogzilla_ros2.py` — ROS 2 bridge mode
+
+```
+Smartphone / Browser
+      │  TCP :6000  /  HTTP :6500
+      ▼
+app_dogzilla_ros2.py
+      │  ROS 2 topics
+      ▼
+yahboom_ctrl  (must be running)
+      │  DOGZILLALib
+      ▼
+/dev/ttyAMA0  →  hardware
+```
+
+`DOGZILLA()` is replaced by `DogzillaROS2(Node)` — same Python API, but every call publishes a ROS 2 topic instead of writing to serial. `yahboom_ctrl` must be running in parallel (e.g. launched via `yahboom_base.launch.py` inside Docker).
+
+**`DogzillaROS2` — published topics:**
+
+| Method called | Topic published | Type |
+|---|---|---|
+| `stop()` / `move_x/y()` / `forward()` … | `/cmd_vel` | `geometry_msgs/Twist` |
+| `action(id)` | `/dogzilla/action` | `std_msgs/Int32` |
+| `pace(mode)` | `/dogzilla/pace` | `std_msgs/String` |
+| `translation(axis, val)` | `/dogzilla/translation` | `geometry_msgs/Vector3` |
+| `attitude(axis, val)` | `/dogzilla/attitude` | `geometry_msgs/Vector3` |
+| `imu(state)` | `/dogzilla/imu` | `std_msgs/Bool` |
+| `perform(mode)` | `/dogzilla/perform` | `std_msgs/Int32` |
+
+`translation` and `attitude` keep local state so that a single-axis update still publishes the full Vector3. Battery is received from `/battery_voltage` (published by `yahboom_ctrl`).
+
+**Commands silently disabled in ROS 2 mode:**
+
+| Command | Reason |
+|---|---|
+| `41` (individual servo) | No topic equivalent |
+| `51` (individual leg) | No topic equivalent |
+| `AA` (calibration) | Safety: calibration must go through the serial bridge |
+
+**rclpy thread model:** `rclpy.init()` and `rclpy.spin()` run in a daemon thread; Flask/Gevent holds the main thread. Shutdown calls `rclpy.shutdown()` on `KeyboardInterrupt`.
+
+---
+
+### Switching between modes
+
+```bash
+# Direct mode (no ROS 2 needed)
+ln -sf /path/to/app_dogzilla.py      ~/autostart/app.py
+
+# ROS 2 bridge mode (yahboom_ctrl must be running)
+ln -sf /path/to/app_dogzilla_ros2.py ~/autostart/app.py
+```
+
+> **Do not run both simultaneously.** `app_dogzilla.py` opens `/dev/ttyAMA0` directly; `yahboom_ctrl` (needed by `app_dogzilla_ros2.py`) also opens that port. Running both at the same time will cause serial port conflicts.
+
+---
+
 ## Repository Layout
 
 ```

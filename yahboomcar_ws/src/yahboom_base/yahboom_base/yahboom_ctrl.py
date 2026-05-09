@@ -1,19 +1,24 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Vector3
-from std_msgs.msg import Int32, String
+from std_msgs.msg import Int32, String, Bool, Float32
 import DOGZILLALib as dog
 
 
 class YahboomCtrl(Node):
     """ROS 2 ↔ DOGZILLALib bridge.
 
-    Topics subscribed:
+    Subscribed topics:
       /cmd_vel              geometry_msgs/Twist    — movement (vx, vy, wz)
       /dogzilla/action      std_msgs/Int32         — action id (1-19, 255=reset)
       /dogzilla/pace        std_msgs/String        — 'slow' | 'normal' | 'high'
       /dogzilla/translation geometry_msgs/Vector3  — x(±35mm) y(±18mm) z(75-115mm)
       /dogzilla/attitude    geometry_msgs/Vector3  — x=roll(±20°) y=pitch(±15°) z=yaw(±11°)
+      /dogzilla/imu         std_msgs/Bool          — IMU stabilisation on/off
+      /dogzilla/perform     std_msgs/Int32         — action carousel (0=stop 1=start)
+
+    Published topics:
+      /battery_voltage      std_msgs/Float32       — battery level (V), polled at 5 s
     """
 
     RATE = 40
@@ -23,13 +28,20 @@ class YahboomCtrl(Node):
         super().__init__('yahboom_ctrl')
         self.dog = dog.DOGZILLA()
 
-        self.create_subscription(Twist, 'cmd_vel', self._cmd_vel_cb, 10)
-        self.create_subscription(Int32, 'dogzilla/action', self._action_cb, 10)
-        self.create_subscription(String, 'dogzilla/pace', self._pace_cb, 10)
-        self.create_subscription(Vector3, 'dogzilla/translation', self._translation_cb, 10)
-        self.create_subscription(Vector3, 'dogzilla/attitude', self._attitude_cb, 10)
+        self.create_subscription(Twist,   'cmd_vel',             self._cmd_vel_cb,    10)
+        self.create_subscription(Int32,   'dogzilla/action',     self._action_cb,     10)
+        self.create_subscription(String,  'dogzilla/pace',       self._pace_cb,       10)
+        self.create_subscription(Vector3, 'dogzilla/translation',self._translation_cb,10)
+        self.create_subscription(Vector3, 'dogzilla/attitude',   self._attitude_cb,   10)
+        self.create_subscription(Bool,    'dogzilla/imu',        self._imu_cb,        10)
+        self.create_subscription(Int32,   'dogzilla/perform',    self._perform_cb,    10)
+
+        self._bat_pub = self.create_publisher(Float32, 'battery_voltage', 10)
+        self.create_timer(5.0, self._publish_battery)
 
         self.get_logger().info('yahboom_ctrl bridge ready')
+
+    # ── motion ────────────────────────────────────────────────────────────────
 
     def _cmd_vel_cb(self, msg):
         vx = msg.linear.x
@@ -61,6 +73,22 @@ class YahboomCtrl(Node):
         self.dog.attitude('r', msg.x)
         self.dog.attitude('p', msg.y)
         self.dog.attitude('y', msg.z)
+
+    def _imu_cb(self, msg):
+        self.dog.imu(1 if msg.data else 0)
+
+    def _perform_cb(self, msg):
+        self.dog.perform(msg.data)
+
+    # ── telemetry ─────────────────────────────────────────────────────────────
+
+    def _publish_battery(self):
+        try:
+            msg = Float32()
+            msg.data = float(self.dog.read_battery())
+            self._bat_pub.publish(msg)
+        except Exception:
+            pass
 
 
 def main(args=None):
