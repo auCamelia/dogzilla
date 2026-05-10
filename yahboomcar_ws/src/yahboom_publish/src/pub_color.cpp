@@ -274,7 +274,7 @@ private:
             std::get<0>(lab_max) = l_max;
             std::get<1>(lab_max) = a_max;
             std::get<2>(lab_max) = b_max;
-            RCLCPP_INFO(this->get_logger(), "Parsed l_min=%d", l_min);
+            RCLCPP_INFO(this->get_logger(), "Parsed l_min=%ld", l_min);
         }
     }
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr subscription_;
