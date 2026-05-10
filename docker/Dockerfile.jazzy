@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-rosbridge-server \
     ros-jazzy-navigation2 \
     ros-jazzy-nav2-bringup \
-    ros-jazzy-rf2o-laser-odometry \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # DOGZILLALib + pyserial
