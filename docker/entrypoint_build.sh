@@ -23,6 +23,7 @@ echo "[BUILD] colcon build — $(date)"
 colcon build \
   --symlink-install \
   --parallel-workers 2 \
+  --packages-skip oradar_lidar ydlidar_ros2_driver \
   2>&1 | tee log/colcon_build.log
 
 STATUS=${PIPESTATUS[0]}
