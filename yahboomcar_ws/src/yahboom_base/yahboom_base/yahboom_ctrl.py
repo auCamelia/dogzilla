@@ -27,6 +27,7 @@ class YahboomCtrl(Node):
     def __init__(self):
         super().__init__('yahboom_ctrl')
         self.dog = dog.DOGZILLA()
+        self._action_active = False
 
         self.create_subscription(Twist,   'cmd_vel',             self._cmd_vel_cb,    10)
         self.create_subscription(Int32,   'dogzilla/action',     self._action_cb,     10)
@@ -48,13 +49,22 @@ class YahboomCtrl(Node):
         vy = msg.linear.y
         wz = msg.angular.z
         if abs(vx) < self.MIN_VEL and abs(vy) < self.MIN_VEL and abs(wz) < self.MIN_VEL:
-            self.dog.stop()
+            # Don't interrupt a running action with a spurious stop().
+            # The browser publishes zero-vel on key release; that would cut actions short.
+            if not self._action_active:
+                self.dog.stop()
             return
+        # Any intentional movement cancels the action lock.
+        self._action_active = False
         self.dog.move('x', vx * self.RATE)
         self.dog.move('y', vy * self.RATE)
         self.dog.turn(wz * self.RATE)
 
     def _action_cb(self, msg):
+        if msg.data == 255:
+            self._action_active = False
+        else:
+            self._action_active = True
         self.dog.action(msg.data)
 
     def _pace_cb(self, msg):
