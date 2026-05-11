@@ -18,12 +18,9 @@ fi
 [ -f install/setup.bash ] && source install/setup.bash
 
 echo "[BUILD] colcon build — $(date)"
-# Tout est compilé ici car on est en natif ARM64 sur le Pi.
-# Dockerfile skippait oradar_lidar/ydlidar pour la cross-compilation x86→ARM.
 colcon build \
   --symlink-install \
   --parallel-workers 2 \
-  --packages-skip oradar_lidar ydlidar_ros2_driver \
   2>&1 | tee log/colcon_build.log
 
 STATUS=${PIPESTATUS[0]}
