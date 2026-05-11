@@ -1,15 +1,26 @@
 import math
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, Vector3, TransformStamped
 from std_msgs.msg import Int32, String, Bool, Float32
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import JointState, Imu
 from tf2_ros import TransformBroadcaster
 import DOGZILLALib as dog
 
+_JOINT_NAMES = [
+    "lf_upper_leg_joint", "lf_lower_leg_joint", "lf_hip_joint",
+    "lh_upper_leg_joint", "lh_lower_leg_joint", "lh_hip_joint",
+    "rf_upper_leg_joint", "rf_lower_leg_joint", "rf_hip_joint",
+    "rh_upper_leg_joint", "rh_lower_leg_joint", "rh_hip_joint",
+]
+_JOINT_SIGNS = [1, -1, 1, 1, -1, 1, -1, 1, 1, -1, 1, 1]
+_SENSOR_PERIOD = 0.1  # seconds — serial reads at 10 Hz
+
 
 class YahboomCtrl(Node):
-    """ROS 2 ↔ DOGZILLALib bridge.
+    """ROS 2 ↔ DOGZILLALib bridge — sole owner of the serial bus.
 
     Subscribed topics:
       /cmd_vel              geometry_msgs/Twist    — movement (vx, vy, wz)
@@ -22,6 +33,8 @@ class YahboomCtrl(Node):
 
     Published topics:
       /battery_voltage      std_msgs/Float32       — battery level (V), polled at 5 s
+      /joint_states         sensor_msgs/JointState — 12-DOF servo angles at 10 Hz
+      /imu/data_raw_self    sensor_msgs/Imu        — roll/pitch/yaw orientation at 10 Hz
       /odom                 nav_msgs/Odometry      — dead-reckoning (only if publish_odom:=true)
       TF odom→base_footprint                       — only if publish_odom:=true
     """
@@ -47,6 +60,17 @@ class YahboomCtrl(Node):
 
         self._bat_pub = self.create_publisher(Float32, 'battery_voltage', 10)
         self.create_timer(5.0, self._publish_battery)
+
+        # Joint states + IMU — read from the same serial instance as commands.
+        self._joint_pub = self.create_publisher(JointState, '/joint_states', 5)
+        self._imu_pub = self.create_publisher(Imu, 'imu/data_raw_self', 10)
+        self._last_angles = [0.0] * 12
+        self._imu_msg = Imu()
+        self._imu_msg.header.frame_id = 'imu_link'
+        self._imu_msg.orientation_covariance = [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+        self._imu_msg.angular_velocity_covariance[0] = -1.0
+        self._imu_msg.linear_acceleration_covariance[0] = -1.0
+        self.create_timer(_SENSOR_PERIOD, self._publish_sensors)
 
         if self._publish_odom_enabled:
             self._x = 0.0
@@ -154,6 +178,52 @@ class YahboomCtrl(Node):
         odom.twist.twist.linear.y = self._vy
         odom.twist.twist.angular.z = self._wz
         self._odom_pub.publish(odom)
+
+    # ── sensors (joint states + IMU) ─────────────────────────────────────────
+
+    def _publish_sensors(self):
+        now = self.get_clock().now()
+        try:
+            angles = self.dog.read_motor()
+            js = JointState()
+            js.header.stamp = now.to_msg()
+            js.name = _JOINT_NAMES
+            js.position = [s * a * math.pi / 180 for s, a in zip(_JOINT_SIGNS, angles)]
+            js.velocity = [
+                (a - p) * math.pi / 180 / _SENSOR_PERIOD
+                for a, p in zip(angles, self._last_angles)
+            ]
+            js.effort = [float('nan')] * 12
+            self._last_angles = list(angles)
+            self._joint_pub.publish(js)
+        except Exception as e:
+            self.get_logger().error(f'Motor read failed: {e}', throttle_duration_sec=1.0)
+
+        try:
+            roll = self.dog.read_roll()
+            pitch = self.dog.read_pitch()
+            yaw = self.dog.read_yaw()
+            qx, qy, qz, qw = self._euler_to_quat(roll, pitch, yaw)
+            self._imu_msg.header.stamp = self.get_clock().now().to_msg()
+            self._imu_msg.orientation.x = qx
+            self._imu_msg.orientation.y = qy
+            self._imu_msg.orientation.z = qz
+            self._imu_msg.orientation.w = qw
+            self._imu_pub.publish(self._imu_msg)
+        except Exception as e:
+            self.get_logger().error(f'IMU read failed: {e}', throttle_duration_sec=1.0)
+
+    @staticmethod
+    def _euler_to_quat(roll, pitch, yaw):
+        sr, cr = np.sin(roll / 2), np.cos(roll / 2)
+        sp, cp = np.sin(pitch / 2), np.cos(pitch / 2)
+        sy, cy = np.sin(yaw / 2), np.cos(yaw / 2)
+        return (
+            sr * cp * cy - cr * sp * sy,
+            cr * sp * cy + sr * cp * sy,
+            cr * cp * sy - sr * sp * cy,
+            cr * cp * cy + sr * sp * sy,
+        )
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 

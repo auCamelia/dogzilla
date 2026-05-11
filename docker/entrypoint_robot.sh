@@ -22,9 +22,8 @@ echo "[ROBOT] Params: ${PARAMS_FILE}"
 # Hardware bridge: cmd_vel → serial, publishes /odom (dead-reckoning) + TF odom→base_footprint
 ros2 run yahboom_base ctrl --ros-args -p publish_odom:=true &
 
-# Robot description + joint states + IMU
+# Robot description
 ros2 launch yahboom_description yahboom_urdf.launch.py &
-ros2 run yahboom_dog_joint_state yahboomcar_joint_state &
 
 # Camera
 ros2 run usb_cam usb_cam_node_exe &

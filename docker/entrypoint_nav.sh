@@ -27,9 +27,8 @@ fi
 # Hardware bridge (cmd_vel → serial)
 ros2 launch yahboom_base yahboom_base.launch.py &
 
-# Robot description + joint states
+# Robot description
 ros2 launch yahboom_description yahboom_urdf.launch.py &
-ros2 run yahboom_dog_joint_state yahboomcar_joint_state &
 
 # Camera
 ros2 run usb_cam usb_cam_node_exe &
