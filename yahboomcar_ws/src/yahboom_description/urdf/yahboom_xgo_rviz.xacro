@@ -823,27 +823,6 @@
         iyz="6.61859556534528E-09"
         izz="4.25931212063486E-06" />
     </inertial>
-    <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <box size="0.01 0.01 0.01" />
-      </geometry>
-      <material
-        name="">
-        <color
-          rgba="1 1 1 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <box size="0.01 0.01 0.01" />
-      </geometry>
-    </collision>
   </link>
   <joint
     name="imu_Joint"

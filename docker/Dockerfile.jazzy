@@ -33,12 +33,11 @@ RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
     echo "[ -f /root/yahboomcar_ws/install/setup.bash ] && source /root/yahboomcar_ws/install/setup.bash" >> /root/.bashrc && \
     echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc
 
-COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/entrypoint_nav.sh /entrypoint_nav.sh
 COPY docker/entrypoint_slam.sh /entrypoint_slam.sh
 COPY docker/entrypoint_build.sh /entrypoint_build.sh
-COPY docker/entrypoint_nav.sh /entrypoint_nav.sh
-RUN chmod +x /entrypoint.sh /entrypoint_slam.sh /entrypoint_build.sh /entrypoint_nav.sh
+RUN chmod +x /entrypoint_nav.sh /entrypoint_slam.sh /entrypoint_build.sh
 
 EXPOSE 8080 9090
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint_nav.sh"]

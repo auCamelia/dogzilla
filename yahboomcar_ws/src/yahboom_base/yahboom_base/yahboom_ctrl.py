@@ -1,10 +1,7 @@
-import math
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, Vector3, TransformStamped
+from geometry_msgs.msg import Twist, Vector3
 from std_msgs.msg import Int32, String, Bool, Float32
-from nav_msgs.msg import Odometry
-from tf2_ros import TransformBroadcaster
 import DOGZILLALib as dog
 
 
@@ -22,8 +19,6 @@ class YahboomCtrl(Node):
 
     Published topics:
       /battery_voltage      std_msgs/Float32       — battery level (V), polled at 5 s
-      /odom                 nav_msgs/Odometry      — dead-reckoning odometry from cmd_vel
-      TF: odom → base_footprint
     """
 
     RATE = 40
@@ -34,15 +29,6 @@ class YahboomCtrl(Node):
         self.dog = dog.DOGZILLA()
         self._action_active = False
 
-        # Dead-reckoning state
-        self._x = 0.0
-        self._y = 0.0
-        self._theta = 0.0
-        self._vx = 0.0
-        self._vy = 0.0
-        self._wz = 0.0
-        self._last_odom_time = self.get_clock().now()
-
         self.create_subscription(Twist,   'cmd_vel',              self._cmd_vel_cb,     10)
         self.create_subscription(Int32,   'dogzilla/action',      self._action_cb,      10)
         self.create_subscription(String,  'dogzilla/pace',        self._pace_cb,        10)
@@ -51,12 +37,8 @@ class YahboomCtrl(Node):
         self.create_subscription(Bool,    'dogzilla/imu',         self._imu_cb,         10)
         self.create_subscription(Int32,   'dogzilla/perform',     self._perform_cb,     10)
 
-        self._bat_pub  = self.create_publisher(Float32, 'battery_voltage', 10)
-        self._odom_pub = self.create_publisher(Odometry, 'odom', 10)
-        self._tf_broadcaster = TransformBroadcaster(self)
-
-        self.create_timer(5.0,  self._publish_battery)
-        self.create_timer(0.05, self._publish_odom)   # 20 Hz
+        self._bat_pub = self.create_publisher(Float32, 'battery_voltage', 10)
+        self.create_timer(5.0, self._publish_battery)
 
         self.get_logger().info('yahboom_ctrl bridge ready')
 
@@ -66,19 +48,12 @@ class YahboomCtrl(Node):
         vx = msg.linear.x
         vy = msg.linear.y
         wz = msg.angular.z
-
-        # Always track the commanded velocity for dead-reckoning.
-        self._vx = vx
-        self._vy = vy
-        self._wz = wz
-
         if abs(vx) < self.MIN_VEL and abs(vy) < self.MIN_VEL and abs(wz) < self.MIN_VEL:
             # Don't interrupt a running action with a spurious stop().
             # The browser publishes zero-vel on key release; that would cut actions short.
             if not self._action_active:
                 self.dog.stop()
             return
-
         # Any intentional movement cancels the action lock.
         self._action_active = False
         self.dog.move('x', vx * self.RATE)
@@ -114,50 +89,6 @@ class YahboomCtrl(Node):
 
     def _perform_cb(self, msg):
         self.dog.perform(msg.data)
-
-    # ── odometry ──────────────────────────────────────────────────────────────
-
-    def _publish_odom(self):
-        now = self.get_clock().now()
-        dt = (now - self._last_odom_time).nanoseconds / 1e9
-        self._last_odom_time = now
-
-        # Integrate velocity in the odom frame.
-        self._x += (self._vx * math.cos(self._theta) - self._vy * math.sin(self._theta)) * dt
-        self._y += (self._vx * math.sin(self._theta) + self._vy * math.cos(self._theta)) * dt
-        self._theta += self._wz * dt
-
-        # Quaternion from yaw.
-        qz = math.sin(self._theta / 2.0)
-        qw = math.cos(self._theta / 2.0)
-
-        # TF: odom → base_footprint
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = self._x
-        t.transform.translation.y = self._y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = 0.0
-        t.transform.rotation.y = 0.0
-        t.transform.rotation.z = qz
-        t.transform.rotation.w = qw
-        self._tf_broadcaster.sendTransform(t)
-
-        # /odom topic
-        odom = Odometry()
-        odom.header.stamp = now.to_msg()
-        odom.header.frame_id = 'odom'
-        odom.child_frame_id = 'base_footprint'
-        odom.pose.pose.position.x = self._x
-        odom.pose.pose.position.y = self._y
-        odom.pose.pose.orientation.z = qz
-        odom.pose.pose.orientation.w = qw
-        odom.twist.twist.linear.x = self._vx
-        odom.twist.twist.linear.y = self._vy
-        odom.twist.twist.angular.z = self._wz
-        self._odom_pub.publish(odom)
 
     # ── telemetry ─────────────────────────────────────────────────────────────
 

@@ -8,21 +8,20 @@ if [ ! -f /root/yahboomcar_ws/install/setup.bash ]; then
     exit 1
 fi
 
-MAP_FILE="${MAP_FILE:-/root/maps/map.yaml}"
-if [ ! -f "${MAP_FILE}" ]; then
-    echo "ERROR: carte introuvable : ${MAP_FILE}"
-    echo "Construire une carte avec : ./run_jazzy.sh --slam"
-    exit 1
-fi
-
 source /opt/ros/jazzy/setup.bash
 source /root/yahboomcar_ws/install/setup.bash
 export ROS_DOMAIN_ID=0
 
 PARAMS_FILE="/root/yahboomcar_ws/src/yahboom_bringup/config/nav2_params.yaml"
 
-echo "[NAV] Carte     : ${MAP_FILE}"
-echo "[NAV] Params    : ${PARAMS_FILE}"
+if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
+    echo "[NAV] Carte     : ${MAP_FILE}"
+    echo "[NAV] Params    : ${PARAMS_FILE}"
+    WITH_NAV2=true
+else
+    echo "[NAV] Pas de carte — mode téléop + odométrie (sans Nav2)"
+    WITH_NAV2=false
+fi
 
 # Hardware bridge (cmd_vel → serial)
 ros2 launch yahboom_base yahboom_base.launch.py &
@@ -50,10 +49,12 @@ ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py \
   odom_frame_id:=odom \
   freq:=10.0 &
 
-# Nav2 — map server + AMCL + planner + controller + costmaps
-ros2 launch nav2_bringup bringup_launch.py \
-  map:="${MAP_FILE}" \
-  params_file:="${PARAMS_FILE}" \
-  use_sim_time:=false &
+# Nav2 — map server + AMCL + planner + controller + costmaps (si carte disponible)
+if [ "${WITH_NAV2}" = true ]; then
+    ros2 launch nav2_bringup bringup_launch.py \
+      map:="${MAP_FILE}" \
+      params_file:="${PARAMS_FILE}" \
+      use_sim_time:=false &
+fi
 
 wait
