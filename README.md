@@ -418,8 +418,7 @@ dogzilla/
 │   ├── yahboom_description/  URDF model + STL meshes
 │   ├── yahboom_msgs/         custom message definitions
 │   └── …                     20+ additional ROS 2 packages
-├── fastdds_unicast.xml       DDS peer discovery (disables multicast for Wi-Fi)
-└── CLAUDE.md                 AI coding assistant guide
+└── fastdds_unicast.xml       DDS peer discovery (disables multicast for Wi-Fi)
 ```
 
 ---
