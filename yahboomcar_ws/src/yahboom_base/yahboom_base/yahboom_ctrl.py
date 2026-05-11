@@ -185,17 +185,18 @@ class YahboomCtrl(Node):
         now = self.get_clock().now()
         try:
             angles = self.dog.read_motor()
-            js = JointState()
-            js.header.stamp = now.to_msg()
-            js.name = _JOINT_NAMES
-            js.position = [s * a * math.pi / 180 for s, a in zip(_JOINT_SIGNS, angles)]
-            js.velocity = [
-                (a - p) * math.pi / 180 / _SENSOR_PERIOD
-                for a, p in zip(angles, self._last_angles)
-            ]
-            js.effort = [float('nan')] * 12
-            self._last_angles = list(angles)
-            self._joint_pub.publish(js)
+            if len(angles) == 12:
+                js = JointState()
+                js.header.stamp = now.to_msg()
+                js.name = _JOINT_NAMES
+                js.position = [s * a * math.pi / 180 for s, a in zip(_JOINT_SIGNS, angles)]
+                js.velocity = [
+                    (a - p) * math.pi / 180 / _SENSOR_PERIOD
+                    for a, p in zip(angles, self._last_angles)
+                ]
+                js.effort = [float('nan')] * 12
+                self._last_angles = list(angles)
+                self._joint_pub.publish(js)
         except Exception as e:
             self.get_logger().error(f'Motor read failed: {e}', throttle_duration_sec=1.0)
 
