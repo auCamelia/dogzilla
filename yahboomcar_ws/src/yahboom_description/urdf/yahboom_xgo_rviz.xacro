@@ -828,7 +828,7 @@
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        
+        <box size="0.01 0.01 0.01" />
       </geometry>
       <material
         name="">
@@ -841,7 +841,7 @@
         xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        
+        <box size="0.01 0.01 0.01" />
       </geometry>
     </collision>
   </link>
