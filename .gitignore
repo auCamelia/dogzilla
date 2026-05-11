@@ -1,10 +1,13 @@
 # Claude Code
 .claude/
 
-# ROS 2 build artifacts (yahboomcar_ws is the only workspace)
+# ROS 2 build artifacts
 yahboomcar_ws/build/
 yahboomcar_ws/install/
 yahboomcar_ws/log/
+pc_ws/build/
+pc_ws/install/
+pc_ws/log/
 
 # Core dump files
 core
