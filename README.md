@@ -21,17 +21,6 @@
 
 ```mermaid
 graph TB
-    subgraph PC["💻  PC — optional (digital twin / RViz2)"]
-        RViz["📊 RViz2\nDigital Twin"]
-    end
-
-    subgraph NET["🔗  Local Network  ·  ROS_DOMAIN_ID=0  ·  FastDDS unicast"]
-        direction LR
-        T1["/cmd_vel"]
-        T2["/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude"]
-        T3["/scan  /odom\n/tf   /map"]
-    end
-
     subgraph PI["🍓  Raspberry Pi 5 — Docker dogzilla:jazzy"]
         direction TB
         Browser["🌐 Any Browser\nteleop.html :8080"]
@@ -41,22 +30,27 @@ graph TB
         HW["🤖  Hardware\n12 servos · 4 legs"]
         SLAM["🗺️  slam_toolbox"]
         NAV["🧭  Nav2\nAMCL + planner + costmap"]
-        LIDAR["📡  LiDAR  /scan"]
-        ODOM["🔄  rf2o_laser_odometry\n/odom"]
+        LIDAR["📡  LiDAR"]
+        ODOM["🔄  rf2o_laser_odometry"]
 
         Browser -- roslibjs --> RB
-        RB -- ROS 2 --> T1 & T2
-        T1 & T2 --> CTRL
+        RB -->|/cmd_vel| CTRL
+        RB -->|/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude| CTRL
         CTRL --> LIB --> HW
-        LIDAR --> SLAM
-        LIDAR --> ODOM
-        NAV -- /cmd_vel --> CTRL
+        LIDAR -->|/scan| SLAM
+        LIDAR -->|/scan| ODOM
+        ODOM -->|/odom| NAV
+        SLAM -->|/map| NAV
+        NAV -->|/cmd_vel| CTRL
     end
 
-    T3 --> RViz
-    SLAM -- /map /tf --> T3
-    LIDAR -- /scan --> T3
-    ODOM -- /odom --> T3
+    subgraph PC["💻  PC — optional (digital twin / RViz2)"]
+        RViz["📊 RViz2\nDigital Twin"]
+    end
+
+    SLAM -->|/map /tf| RViz
+    LIDAR -->|/scan| RViz
+    ODOM -->|/odom| RViz
 ```
 
 Everything runs on the Pi — the browser is the only client needed.  

@@ -7,7 +7,6 @@ RUN apt-get update && apt-get install -y \
     python3-rosdep \
     python3-pip \
     python3-setuptools \
-    unzip \
     ros-jazzy-usb-cam \
     ros-jazzy-robot-state-publisher \
     ros-jazzy-joint-state-publisher \
@@ -23,23 +22,12 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# DOGZILLALib + pyserial
-COPY DOGZILLALib.zip /tmp/DOGZILLALib.zip
-RUN cd /tmp && unzip DOGZILLALib.zip && \
-    pip install --break-system-packages pyserial && \
-    pip install --break-system-packages -e /tmp/DOGZILLALib/ && \
-    rm -f /tmp/DOGZILLALib.zip
+RUN pip install --break-system-packages pyserial
 
 RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
     echo "[ -f /root/yahboomcar_ws/install/setup.bash ] && source /root/yahboomcar_ws/install/setup.bash" >> /root/.bashrc && \
     echo "export ROS_DOMAIN_ID=0" >> /root/.bashrc
 
-COPY docker/entrypoint_nav.sh /entrypoint_nav.sh
-COPY docker/entrypoint_slam.sh /entrypoint_slam.sh
-COPY docker/entrypoint_build.sh /entrypoint_build.sh
-COPY docker/entrypoint_robot.sh /entrypoint_robot.sh
-RUN chmod +x /entrypoint_nav.sh /entrypoint_slam.sh /entrypoint_build.sh /entrypoint_robot.sh
+# Entrypoints and DOGZILLALib are volume-mounted at runtime — nothing to copy here.
 
 EXPOSE 8080 9090
-
-ENTRYPOINT ["/entrypoint_nav.sh"]

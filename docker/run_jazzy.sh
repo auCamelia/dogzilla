@@ -37,22 +37,24 @@ done
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE="${REPO_ROOT}/yahboomcar_ws"
 
-ENTRYPOINT_ARG=""
 case "$MODE" in
-  slam)   ENTRYPOINT_ARG="--entrypoint /entrypoint_slam.sh"  ;;
-  build)  ENTRYPOINT_ARG="--entrypoint /entrypoint_build.sh" ;;
-  robot)  ENTRYPOINT_ARG="--entrypoint /entrypoint_robot.sh" ;;
+  nav)    ENTRYPOINT="/docker/entrypoint_nav.sh"   ;;
+  slam)   ENTRYPOINT="/docker/entrypoint_slam.sh"  ;;
+  build)  ENTRYPOINT="/docker/entrypoint_build.sh" ;;
+  robot)  ENTRYPOINT="/docker/entrypoint_robot.sh" ;;
 esac
 
-docker run -it \
+docker run -it --rm \
   --net=host \
   --env="ROS_DOMAIN_ID=0" \
   --env="MAP_FILE=${MAP_FILE}" \
   -v "${WORKSPACE}:/root/yahboomcar_ws" \
+  -v "${REPO_ROOT}/docker:/docker:ro" \
+  -v "${REPO_ROOT}/DOGZILLALib:/root/DOGZILLALib:ro" \
   -v /home/pi/maps:/root/maps \
   --device=/dev/ttyAMA1 \
   --device=/dev/ttyAMA0 \
   --device=/dev/video0 \
   --device=/dev/input \
-  ${ENTRYPOINT_ARG} \
+  --entrypoint "${ENTRYPOINT}" \
   dogzilla:jazzy

@@ -11,6 +11,7 @@ fi
 source /opt/ros/jazzy/setup.bash
 source /root/yahboomcar_ws/install/setup.bash
 export ROS_DOMAIN_ID=0
+export PYTHONPATH=/root/DOGZILLALib:${PYTHONPATH}
 
 PARAMS_FILE="/root/yahboomcar_ws/src/yahboom_bringup/config/ekf_robot.yaml"
 
