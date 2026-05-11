@@ -26,6 +26,7 @@ graph TB
         Browser["🌐 Any Browser\nteleop.html :8080"]
         RB["rosbridge_server\nWebSocket :9090"]
         CTRL["yahboom_ctrl\nROS 2 ↔ DOGZILLALib bridge"]
+        RSP["robot_state_publisher\nURDF → /tf"]
         LIB["⚙️  DOGZILLALib\nserial /dev/ttyAMA0 · 115200 baud"]
         HW["🤖  Hardware\n12 servos · 4 legs"]
         SLAM["🗺️  slam_toolbox"]
@@ -37,6 +38,7 @@ graph TB
         RB -->|/cmd_vel| CTRL
         RB -->|/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude| CTRL
         CTRL --> LIB --> HW
+        CTRL -->|/joint_states| RSP
         LIDAR -->|/scan| SLAM
         LIDAR -->|/scan| ODOM
         ODOM -->|/odom| NAV
@@ -48,12 +50,13 @@ graph TB
         RViz["📊 RViz2\nDigital Twin"]
     end
 
-    SLAM -->|/map /tf| RViz
+    RSP -->|/tf| RViz
+    SLAM -->|/map| RViz
     LIDAR -->|/scan| RViz
     ODOM -->|/odom| RViz
 
     classDef ros2 fill:#cce8ff,stroke:#4a90c4,color:#000
-    class RB,CTRL,SLAM,NAV,ODOM ros2
+    class RB,CTRL,RSP,SLAM,NAV,ODOM ros2
 
     style PI fill:#f7f7f7,stroke:#888,stroke-width:2px,padding:20px
     style PC fill:#f0f7ee,stroke:#888,stroke-width:2px,padding:20px
