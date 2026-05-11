@@ -274,10 +274,22 @@ continuously broadcasts the full kinematic tree as TF transforms. Every other no
 needs to know where a link is in space (RViz2, Nav2 costmaps, scan matching) relies on
 these transforms. Without this node, the robot has no spatial representation in ROS.
 
-**`yahboomcar_joint_state`** · package `yahboom_dog_joint_state`  
-Reads the 12 servo angles and the on-board IMU over serial, then publishes them as
-`/joint_states` and `/imu/data_raw_self`. The joint states feed `robot_state_publisher`
-so the digital twin in RViz2 mirrors the real robot's posture in real time.
+**`yahboom_ctrl`** (joint states + IMU) · package `yahboom_base`  
+In addition to handling motion commands, `yahboom_ctrl` is the sole owner of the serial
+bus and publishes sensor data at 10 Hz:
+
+- **`/joint_states`** — queries the 12 servo angles via `DOGZILLALib.read_motor()` (serial
+  read request to address `0x50`, response: 12 bytes encoded 0–255), converts them to
+  radians with per-joint sign correction, and publishes them as `sensor_msgs/JointState`.
+  `robot_state_publisher` consumes this topic to keep the digital twin in sync with the
+  real robot posture.
+- **`/imu/data_raw_self`** — queries roll, pitch, yaw from the on-board MPU6050 via
+  `read_roll()` / `read_pitch()` / `read_yaw()` (3 separate serial reads, each returning
+  a 4-byte IEEE 754 float), converts to a quaternion, and publishes as `sensor_msgs/Imu`.
+
+> **Why merged:** running a separate `yahboomcar_joint_state` node alongside `yahboom_ctrl`
+> opened a second `DOGZILLA()` instance on the same UART, causing interleaved serial frames
+> that corrupted motion commands (body and legs decoupled during joystick driving).
 
 **`usb_cam_node_exe`** · package `usb_cam`  
 Opens `/dev/video0` (with fallback to `/dev/video1`) and publishes the camera stream as
@@ -306,7 +318,7 @@ An Extended Kalman Filter that fuses two sources to produce a smooth, drift-corr
 - `/odom` — dead-reckoning velocities (vx, vy, vyaw) from `yahboom_ctrl`. Accurate
   over short intervals but accumulates drift over time.
 - `/imu/data_raw_self` — orientation (roll, pitch, yaw) from the on-board MPU6050 IMU,
-  read by `yahboomcar_joint_state`. The IMU provides absolute heading, which prevents
+  read by `yahboom_ctrl`. The IMU provides absolute heading, which prevents
   the rotational drift that would otherwise corrupt the dead-reckoning estimate.
 
 The EKF fuses orientation from the IMU and velocities from odometry; it ignores angular
@@ -410,8 +422,8 @@ and follows it at a fixed distance). Also drives a buzzer output when objects ar
 | `/battery_voltage` | `std_msgs/Float32` | `yahboom_ctrl` → browser header |
 | `/image_raw` | `sensor_msgs/Image` | `usb_cam` → perception pipeline |
 | `/image_raw/compressed` | `sensor_msgs/CompressedImage` | `usb_cam` → teleop browser (via rosbridge) |
-| `/joint_states` | `sensor_msgs/JointState` | `yahboomcar_joint_state` → `robot_state_publisher` |
-| `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboomcar_joint_state` → `ekf_node` · Nav2 |
+| `/joint_states` | `sensor_msgs/JointState` | `yahboom_ctrl` (via DOGZILLALib serial) → `robot_state_publisher` |
+| `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboom_ctrl` (via DOGZILLALib serial) → `ekf_node` · Nav2 |
 | `/scan` | `sensor_msgs/LaserScan` | LiDAR driver → `slam_toolbox` · `rf2o` · Nav2 costmaps |
 | `/odom` | `nav_msgs/Odometry` | `yahboom_ctrl` (robot mode) · `rf2o` (nav/slam) → `ekf_node` · Nav2 |
 | `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_node` → RViz2 (robot mode only) |
