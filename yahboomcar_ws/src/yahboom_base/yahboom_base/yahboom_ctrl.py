@@ -182,6 +182,8 @@ class YahboomCtrl(Node):
     # ── sensors (joint states + IMU) ─────────────────────────────────────────
 
     def _publish_sensors(self):
+        if self._action_active:
+            return
         now = self.get_clock().now()
         try:
             angles = self.dog.read_motor()
