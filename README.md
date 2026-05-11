@@ -161,10 +161,11 @@ ssh pi@<pi-ip> docker load -i dogzilla_jazzy_arm64.tar
 
 ### 3 — Launch
 
-**Robot mode (teleop)**
+**Robot mode (teleop + IMU/EKF, no LiDAR)**
 ```bash
 ./docker/run_jazzy.sh --robot
 # open http://<pi-ip>:8080/teleop.html in any browser
+# odometry = dead-reckoning (cmd_vel integration) fused with IMU via EKF
 ```
 
 **SLAM — build a map**
@@ -257,7 +258,12 @@ The central hardware bridge. Subscribes to `/cmd_vel` (geometry_msgs/Twist) and 
 linear/angular velocity into the DOGZILLALib gait commands sent over serial to `/dev/ttyAMA0`.
 Also subscribes to the `/dogzilla/*` topics for finer-grained control (pre-defined actions,
 body translation, attitude, pace changes) that go beyond what a Twist can express.
-Publishes `/battery_voltage` by polling the hardware periodically.
+Publishes `/battery_voltage` by polling the hardware periodically.  
+In `--robot` mode it is launched with `publish_odom:=true`, which activates dead-reckoning
+odometry: the node integrates `/cmd_vel` velocities over time to produce `/odom`
+(nav_msgs/Odometry) and broadcast the `odom → base_footprint` TF. This dead-reckoning is
+the primary motion source for the EKF in robot mode; in `--nav` mode rf2o provides `/odom`
+instead and this parameter stays false.
 
 **`robot_state_publisher`** · package `robot_state_publisher`  
 Reads the robot URDF (from `yahboom_description`) and the current `/joint_states`, then
@@ -286,6 +292,23 @@ A minimal HTTP server on port 8080 that serves the static web assets: `teleop.ht
 `watch.html` (Samsung Watch layout), and the PWA manifest. The HTML+JS files contain
 the entire teleop UI — they make no server-side calls once loaded; all robot communication
 goes through the rosbridge WebSocket.
+
+---
+
+### Pi — Robot mode only (`--robot`)
+
+**`ekf_node`** · package `robot_localization`  
+An Extended Kalman Filter that fuses two sources to produce a smooth, drift-corrected
+`/odometry/filtered` estimate (and the `odom → base_footprint` TF):
+- `/odom` — dead-reckoning velocities (vx, vy, vyaw) from `yahboom_ctrl`. Accurate
+  over short intervals but accumulates drift over time.
+- `/imu/data_raw_self` — orientation (roll, pitch, yaw) from the on-board MPU6050 IMU,
+  read by `yahboomcar_joint_state`. The IMU provides absolute heading, which prevents
+  the rotational drift that would otherwise corrupt the dead-reckoning estimate.
+
+The EKF fuses orientation from the IMU and velocities from odometry; it ignores angular
+velocity and linear acceleration (not published by this IMU). Configuration:
+`yahboom_bringup/config/ekf_robot.yaml`.
 
 ---
 
@@ -385,9 +408,10 @@ and follows it at a fixed distance). Also drives a buzzer output when objects ar
 | `/image_raw` | `sensor_msgs/Image` | `usb_cam` → perception pipeline |
 | `/image_raw/compressed` | `sensor_msgs/CompressedImage` | `usb_cam` → teleop browser (via rosbridge) |
 | `/joint_states` | `sensor_msgs/JointState` | `yahboomcar_joint_state` → `robot_state_publisher` |
-| `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboomcar_joint_state` → Nav2 |
+| `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboomcar_joint_state` → `ekf_node` · Nav2 |
 | `/scan` | `sensor_msgs/LaserScan` | LiDAR driver → `slam_toolbox` · `rf2o` · Nav2 costmaps |
-| `/odom` | `nav_msgs/Odometry` | `rf2o_laser_odometry` → Nav2 AMCL + planner |
+| `/odom` | `nav_msgs/Odometry` | `yahboom_ctrl` (robot mode) · `rf2o` (nav/slam) → `ekf_node` · Nav2 |
+| `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_node` → RViz2 (robot mode only) |
 | `/map` | `nav_msgs/OccupancyGrid` | `slam_toolbox` / Nav2 map_server → RViz2 · Nav2 planners |
 | `/tf`, `/tf_static` | — | `robot_state_publisher` → RViz2 · Nav2 · scan matching |
 
@@ -400,10 +424,10 @@ dogzilla/
 ├── DOGZILLALib/              hardware library — serial framing to /dev/ttyAMA0
 ├── app_dogzilla/             legacy Flask app (port 6500, no ROS)
 ├── docker/
-│   ├── Dockerfile.jazzy      ROS Jazzy + slam-toolbox + nav2 + rf2o (ARM64)
-│   ├── entrypoint.sh         --robot: hardware bridge + camera + rosbridge + web UI
+│   ├── Dockerfile.jazzy      ROS Jazzy + slam-toolbox + nav2 + robot-localization (ARM64)
+│   ├── entrypoint_robot.sh   --robot: teleop + dead-reckoning odom + IMU/EKF
 │   ├── entrypoint_slam.sh    --slam: robot stack + LiDAR driver + slam_toolbox
-│   ├── entrypoint_nav.sh     --nav: robot stack + LiDAR + rf2o odometry + Nav2
+│   ├── entrypoint_nav.sh     --nav: robot stack + LiDAR + rf2o odometry + optional Nav2
 │   ├── entrypoint_build.sh   --build: colcon build, persists via volume mount
 │   └── run_jazzy.sh          container launcher — modes: --robot / --slam / --nav / --build
 ├── pc_ws/                    PC-only workspace (symlinks into yahboomcar_ws/src/)
@@ -414,7 +438,7 @@ dogzilla/
 ├── yahboomcar_ws/src/
 │   ├── dogzilla_teleop/      web teleop UI served from Pi (:8080)
 │   ├── yahboom_base/         hardware bridge — yahboom_ctrl node
-│   ├── yahboom_bringup/      SLAM + Nav2 launch files + nav2_params.yaml
+│   ├── yahboom_bringup/      SLAM + Nav2 launch files + nav2_params.yaml + ekf_robot.yaml
 │   ├── yahboom_description/  URDF model + STL meshes
 │   ├── yahboom_msgs/         custom message definitions
 │   └── …                     20+ additional ROS 2 packages

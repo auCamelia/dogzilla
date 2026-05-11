@@ -1,17 +1,18 @@
 #!/bin/bash
 # Usage:
-#   ./run_jazzy.sh                        — nav mode, default (teleop + LiDAR + rf2o, no Nav2)
+#   ./run_jazzy.sh                        — nav mode (default): teleop + LiDAR + rf2o, no Nav2
 #   ./run_jazzy.sh --nav [map.yaml]       — nav mode + Nav2 autonomous navigation
-#                                           map.yaml = chemin container (/root/maps/…)
-#                                           défaut : /root/maps/map.yaml
+#                                           map.yaml = container path (/root/maps/…)
+#                                           default: /root/maps/map.yaml
+#   ./run_jazzy.sh --robot                — robot mode: teleop + dead-reckoning + IMU/EKF, no LiDAR
 #   ./run_jazzy.sh --slam                 — SLAM cartography (slam_toolbox)
-#   ./run_jazzy.sh --build                — colcon build → install/ log/ build/ persistés sur Pi
+#   ./run_jazzy.sh --build                — colcon build (workspace persisted on Pi)
 #
-# Le workspace (src/ install/ build/ log/) est monté depuis le repo Pi.
-# Workflow initial :
+# Workspace (src/ install/ build/ log/) is volume-mounted from the Pi repo.
+# Initial workflow:
 #   git clone <repo> ~/dogzilla
-#   ./docker/run_jazzy.sh --build         ← construit le workspace une fois
-#   ./docker/run_jazzy.sh                 ← lance le robot
+#   ./docker/run_jazzy.sh --build         ← build once
+#   ./docker/run_jazzy.sh                 ← run the robot
 
 MODE="nav"
 MAP_FILE=""
@@ -20,14 +21,15 @@ i=1
 while [ $i -le $# ]; do
   arg="${!i}"
   case "$arg" in
-    --slam)  MODE="slam"  ;;
-    --build) MODE="build" ;;
+    --slam)   MODE="slam"   ;;
+    --build)  MODE="build"  ;;
+    --robot)  MODE="robot"  ;;
     --nav)
       MODE="nav"
       i=$((i + 1))
       [ $i -le $# ] && [[ "${!i}" != --* ]] && MAP_FILE="${!i}" || true
       ;;
-    *) echo "Usage: $0 [--nav [map.yaml]|--slam|--build]" >&2; exit 1 ;;
+    *) echo "Usage: $0 [--nav [map.yaml]|--robot|--slam|--build]" >&2; exit 1 ;;
   esac
   i=$((i + 1))
 done
@@ -37,8 +39,9 @@ WORKSPACE="${REPO_ROOT}/yahboomcar_ws"
 
 ENTRYPOINT_ARG=""
 case "$MODE" in
-  slam)  ENTRYPOINT_ARG="--entrypoint /entrypoint_slam.sh" ;;
-  build) ENTRYPOINT_ARG="--entrypoint /entrypoint_build.sh" ;;
+  slam)   ENTRYPOINT_ARG="--entrypoint /entrypoint_slam.sh"  ;;
+  build)  ENTRYPOINT_ARG="--entrypoint /entrypoint_build.sh" ;;
+  robot)  ENTRYPOINT_ARG="--entrypoint /entrypoint_robot.sh" ;;
 esac
 
 docker run -it \

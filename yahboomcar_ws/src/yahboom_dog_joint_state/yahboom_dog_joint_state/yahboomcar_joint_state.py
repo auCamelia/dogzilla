@@ -39,6 +39,12 @@ class MinimalPublisher(Node):
         self.dogControl = dog.DOGZILLA()
         self.imu_msg = Imu()
         self.imu_msg.header.frame_id = 'imu_link'
+        # Orientation valid; angular velocity and linear accel not provided by this IMU.
+        self.imu_msg.orientation_covariance = [0.01, 0.0, 0.0,
+                                               0.0, 0.01, 0.0,
+                                               0.0, 0.0, 0.01]
+        self.imu_msg.angular_velocity_covariance[0] = -1.0
+        self.imu_msg.linear_acceleration_covariance[0] = -1.0
 
         self.publisher_ = self.create_publisher(JointState, '/joint_states', 5)
         self.imu_pub = self.create_publisher(Imu, 'imu/data_raw_self', 10)
