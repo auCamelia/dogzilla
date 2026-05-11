@@ -51,6 +51,12 @@ graph TB
     SLAM -->|/map /tf| RViz
     LIDAR -->|/scan| RViz
     ODOM -->|/odom| RViz
+
+    classDef ros2 fill:#cce8ff,stroke:#4a90c4,color:#000
+    class RB,CTRL,SLAM,NAV,ODOM ros2
+
+    style PI fill:#f7f7f7,stroke:#888,stroke-width:2px,padding:20px
+    style PC fill:#f0f7ee,stroke:#888,stroke-width:2px,padding:20px
 ```
 
 Everything runs on the Pi — the browser is the only client needed.  
