@@ -23,6 +23,16 @@
 #endif
 
 using namespace std;
+using namespace ydlidar; // expose ydlidar::core::base into global scope
+
+struct Utils {
+  static uint8_t xor_check(const uint8_t *data, int len) {
+    uint8_t result = 0;
+    for (int i = 0; i < len; i++) result ^= data[i];
+    return result;
+  }
+};
+
 //using namespace ordlidar;
 namespace ordlidar
 {

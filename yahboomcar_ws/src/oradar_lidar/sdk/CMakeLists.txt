@@ -60,6 +60,17 @@ include_directories(.)
 include_directories(core)
 include_directories(src)
 
+# Alias YDLidar macros so the borrowed core/ CMakeLists build under oradar_sdk.
+macro(add_to_ydlidar_headers)
+    add_to_oradar_headers(${ARGN})
+endmacro()
+macro(add_to_ydlidar_sources)
+    add_to_oradar_sources(${ARGN})
+endmacro()
+macro(add_to_ydlidar_libraries)
+    add_to_oradar_libraries(${ARGN})
+endmacro()
+
 #############################################################################
 # addd subdirectory
 add_subdirectory(core)
