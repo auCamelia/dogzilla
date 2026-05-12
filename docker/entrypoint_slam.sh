@@ -1,10 +1,14 @@
 #!/bin/bash
-# SLAM cartography mode — runs on Pi
-# Nav2 runs on PC (see dogzilla_nav package)
+# SLAM mode — full robot stack + slam_toolbox for map building.
+# Drive the robot with the teleop UI while the map builds.
+# Save the map with: ros2 run nav2_map_server map_saver_cli -f /root/maps/my_map
+# Usage: ./run_jazzy.sh --slam
+
 if [ ! -f /root/yahboomcar_ws/install/setup.bash ]; then
-    echo "ERROR: workspace non construit. Lancer d'abord : ./run_jazzy.sh --build"
+    echo "ERROR: workspace not built. Run first: ./run_jazzy.sh --build"
     exit 1
 fi
+
 source /opt/ros/jazzy/setup.bash
 source /root/yahboomcar_ws/install/setup.bash
 export ROS_DOMAIN_ID=0
@@ -12,5 +16,34 @@ export PYTHONPATH=/root/DOGZILLALib:${PYTHONPATH}
 
 mkdir -p /root/maps
 
-echo "[SLAM] Starting cartography (slam_toolbox)"
-ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false
+echo "[SLAM] Hardware bridge + LiDAR odometry (rf2o) + slam_toolbox"
+
+# Hardware bridge: cmd_vel → serial, joint states + IMU at 10 Hz.
+ros2 run yahboom_base ctrl &
+
+# Robot description
+ros2 launch yahboom_description yahboom_urdf.launch.py &
+
+# Camera
+ros2 run usb_cam usb_cam_node_exe &
+
+# Teleop web UI
+ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
+ros2 run dogzilla_teleop web_server --ros-args -p open_browser:=false &
+
+# LiDAR OradarMS200 — publishes /scan + TF base_link→laser_frame
+ros2 launch oradar_lidar ms200_scan.launch.py &
+
+# LiDAR odometry — scan matching between consecutive scans.
+# slam_toolbox uses /odom via /tf, so rf2o publishes TF here (no EKF in slam mode).
+ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py \
+  laser_scan_topic:=/scan \
+  odom_topic:=/odom \
+  base_frame_id:=base_footprint \
+  odom_frame_id:=odom \
+  freq:=10.0 &
+
+# SLAM — builds and publishes /map from /scan + odometry
+ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false &
+
+wait

@@ -348,16 +348,17 @@ available from this IMU (covariance[0] = −1 signals this). Configuration:
 
 ### Pi — SLAM mode only (`--slam`)
 
-**LiDAR driver** · package `oradar_lidar`  
-Opens the OradarMS200 LiDAR on `/dev/ttyAMA1` (serial, not USB) and publishes
-`/scan` (sensor_msgs/LaserScan) at ~10 Hz. Also broadcasts the static TF from
-`base_link` to `laser_frame` so the scan is properly located in the robot frame.
+Same base stack as `--robot` (hardware bridge · camera · teleop · LiDAR · rf2o), minus EKF.
+rf2o publishes the `odom→base_footprint` TF directly (no EKF needed for map building), plus:
 
 **`slam_toolbox`** · package `slam_toolbox`  
 Online asynchronous SLAM: fuses `/scan` with the odometry embedded in `/tf` to build
 and maintain a 2D occupancy grid published as `/map`. The map grows incrementally as
-the robot explores. Once the map covers the desired area, it can be saved to disk
-with `map_saver_cli` and reloaded later for Nav2 localisation.
+the robot explores. Once the map covers the desired area, save it:
+```bash
+ros2 run nav2_map_server map_saver_cli -f /root/maps/my_map
+# → persisted to /home/pi/maps/ on the Pi via volume mount
+```
 
 ---
 
