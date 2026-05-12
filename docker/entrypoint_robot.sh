@@ -19,8 +19,9 @@ echo "[ROBOT] Hardware bridge + dead-reckoning odom"
 echo "[ROBOT] IMU fusion via EKF (robot_localization)"
 echo "[ROBOT] Params: ${PARAMS_FILE}"
 
-# Hardware bridge: cmd_vel → serial, publishes /odom (dead-reckoning) + TF odom→base_footprint
-ros2 run yahboom_base ctrl --ros-args -p publish_odom:=true &
+# Hardware bridge: cmd_vel → serial, publishes /odom (dead-reckoning).
+# TF odom→base_footprint is delegated to the EKF (which fuses IMU orientation).
+ros2 run yahboom_base ctrl --ros-args -p publish_odom:=true -p publish_tf:=false &
 
 # Robot description
 ros2 launch yahboom_description yahboom_urdf.launch.py &

@@ -48,7 +48,9 @@ class YahboomCtrl(Node):
         self._action_active = False
 
         self.declare_parameter('publish_odom', False)
+        self.declare_parameter('publish_tf', True)
         self._publish_odom_enabled = self.get_parameter('publish_odom').value
+        self._publish_tf_enabled = self.get_parameter('publish_tf').value
 
         self.create_subscription(Twist,   'cmd_vel',              self._cmd_vel_cb,     10)
         self.create_subscription(Int32,   'dogzilla/action',      self._action_cb,      10)
@@ -81,7 +83,8 @@ class YahboomCtrl(Node):
             self._wz = 0.0
             self._last_odom_time = self.get_clock().now()
             self._odom_pub = self.create_publisher(Odometry, 'odom', 10)
-            self._tf_broadcaster = TransformBroadcaster(self)
+            if self._publish_tf_enabled:
+                self._tf_broadcaster = TransformBroadcaster(self)
             self.create_timer(0.05, self._publish_odom)
             self.get_logger().info('yahboom_ctrl: dead-reckoning odom enabled')
 
@@ -155,16 +158,17 @@ class YahboomCtrl(Node):
         qz = math.sin(self._theta / 2.0)
         qw = math.cos(self._theta / 2.0)
 
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = self._x
-        t.transform.translation.y = self._y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.z = qz
-        t.transform.rotation.w = qw
-        self._tf_broadcaster.sendTransform(t)
+        if self._publish_tf_enabled:
+            t = TransformStamped()
+            t.header.stamp = now.to_msg()
+            t.header.frame_id = 'odom'
+            t.child_frame_id = 'base_footprint'
+            t.transform.translation.x = self._x
+            t.transform.translation.y = self._y
+            t.transform.translation.z = 0.0
+            t.transform.rotation.z = qz
+            t.transform.rotation.w = qw
+            self._tf_broadcaster.sendTransform(t)
 
         odom = Odometry()
         odom.header.stamp = now.to_msg()
