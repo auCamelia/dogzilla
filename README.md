@@ -363,9 +363,7 @@ with `map_saver_cli` and reloaded later for Nav2 localisation.
 
 ### Pi — Nav mode only (`--nav`)
 
-All robot mode nodes (LiDAR driver · rf2o · EKF), plus:
-
-**Nav2 costmaps** also subscribe to `/scan` from the LiDAR driver — same node, additional consumer.
+Identical base stack as `--robot` (LiDAR driver · rf2o · EKF), plus:
 
 **Nav2 stack** · package `nav2_bringup`  
 A suite of nodes that together provide fully autonomous point-to-point navigation:
