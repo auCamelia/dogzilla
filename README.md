@@ -26,7 +26,8 @@ graph TB
         Browser["🌐 Any Browser\nteleop.html :8080"]
         RB["rosbridge_server\nWebSocket :9090"]
         CTRL["yahboom_ctrl\nROS 2 ↔ DOGZILLALib bridge"]
-        RSP["robot_state_publisher\nURDF → /tf"]
+        RSP["robot_state_publisher\nURDF + /joint_states → /tf"]
+        EKF["ekf_node\n/odom + IMU → odom→base_footprint TF"]
         LIB["⚙️  DOGZILLALib\nserial /dev/ttyAMA0 · 115200 baud"]
         HW["🤖  Hardware\n12 servos · 4 legs"]
         SLAM["🗺️  slam_toolbox"]
@@ -39,6 +40,8 @@ graph TB
         RB -->|/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude| CTRL
         CTRL --> LIB --> HW
         CTRL -->|/joint_states| RSP
+        CTRL -->|/odom| EKF
+        CTRL -->|/imu/data_raw_self| EKF
         LIDAR -->|/scan| SLAM
         LIDAR -->|/scan| ODOM
         ODOM -->|/odom| NAV
@@ -50,13 +53,14 @@ graph TB
         RViz["📊 RViz2\nDigital Twin"]
     end
 
-    RSP -->|/tf| RViz
+    RSP -->|"/tf (joint transforms)"| RViz
+    EKF -->|"/tf (odom→base_footprint\nwith roll/pitch from IMU)"| RViz
     SLAM -->|/map| RViz
     LIDAR -->|/scan| RViz
     ODOM -->|/odom| RViz
 
     classDef ros2 fill:#cce8ff,stroke:#4a90c4,color:#000
-    class RB,CTRL,RSP,SLAM,NAV,ODOM ros2
+    class RB,CTRL,RSP,EKF,SLAM,NAV,ODOM ros2
 
     style PI fill:#f7f7f7,stroke:#888,stroke-width:2px,padding:20px
     style PC fill:#f0f7ee,stroke:#888,stroke-width:2px,padding:20px
@@ -262,11 +266,13 @@ linear/angular velocity into the DOGZILLALib gait commands sent over serial to `
 Also subscribes to the `/dogzilla/*` topics for finer-grained control (pre-defined actions,
 body translation, attitude, pace changes) that go beyond what a Twist can express.
 Publishes `/battery_voltage` by polling the hardware periodically.  
-In `--robot` mode it is launched with `publish_odom:=true`, which activates dead-reckoning
-odometry: the node integrates `/cmd_vel` velocities over time to produce `/odom`
-(nav_msgs/Odometry) and broadcast the `odom → base_footprint` TF. This dead-reckoning is
-the primary motion source for the EKF in robot mode; in `--nav` mode rf2o provides `/odom`
-instead and this parameter stays false.
+In `--robot` mode it is launched with `publish_odom:=true publish_tf:=false`.
+`publish_odom:=true` activates dead-reckoning odometry: the node integrates `/cmd_vel`
+velocities over time and publishes `/odom` (nav_msgs/Odometry) as the velocity source for
+the EKF. `publish_tf:=false` delegates the `odom → base_footprint` TF to the EKF, which
+fuses IMU orientation before broadcasting it — without this split, yahboom_ctrl and the EKF
+would publish conflicting TFs and the IMU orientation would be silently overwritten.
+In `--nav` mode rf2o provides `/odom` and both parameters stay at their defaults (false/true).
 
 **`robot_state_publisher`** · package `robot_state_publisher`  
 Reads the robot URDF (from `yahboom_description`) and the current `/joint_states`, then
@@ -314,16 +320,25 @@ goes through the rosbridge WebSocket.
 
 **`ekf_node`** · package `robot_localization`  
 An Extended Kalman Filter that fuses two sources to produce a smooth, drift-corrected
-`/odometry/filtered` estimate (and the `odom → base_footprint` TF):
+`/odometry/filtered` estimate and — in robot mode — **owns the `odom → base_footprint` TF**
+(yahboom_ctrl's TF is disabled via `publish_tf:=false`):
 - `/odom` — dead-reckoning velocities (vx, vy, vyaw) from `yahboom_ctrl`. Accurate
   over short intervals but accumulates drift over time.
 - `/imu/data_raw_self` — orientation (roll, pitch, yaw) from the on-board MPU6050 IMU,
-  read by `yahboom_ctrl`. The IMU provides absolute heading, which prevents
-  the rotational drift that would otherwise corrupt the dead-reckoning estimate.
+  read by `yahboom_ctrl`. The IMU provides absolute attitude, which prevents
+  the rotational drift that would otherwise corrupt dead-reckoning, and reflects body
+  tilt during actions (e.g. sit-down) in the digital twin.
 
-The EKF fuses orientation from the IMU and velocities from odometry; it ignores angular
-velocity and linear acceleration (not published by this IMU). Configuration:
+The EKF runs in full 3D mode (`two_d_mode: false`) so roll and pitch from the IMU are
+incorporated into the published TF. Angular velocity and linear acceleration are not
+available from this IMU (covariance[0] = −1 signals this). Configuration:
 `yahboom_bringup/config/ekf_robot.yaml`.
+
+> **Digital twin body pose — what is and isn't captured:**  
+> Leg geometry (joint_states) → fully reflected via `robot_state_publisher` ✓  
+> Body tilt / roll / pitch (IMU via EKF) → reflected in the `odom→base_footprint` TF ✓  
+> Body height change (e.g. robot lowers during sit-down) → not captured; would require
+> forward kinematics from joint angles to estimate CoM height ✗
 
 ---
 
