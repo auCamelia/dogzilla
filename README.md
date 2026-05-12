@@ -40,10 +40,10 @@ graph TB
         RB -->|/dogzilla/action\n/dogzilla/pace\n/dogzilla/translation\n/dogzilla/attitude| CTRL
         CTRL --> LIB --> HW
         CTRL -->|/joint_states| RSP
-        CTRL -->|/odom| EKF
         CTRL -->|/imu/data_raw_self| EKF
         LIDAR -->|/scan| SLAM
         LIDAR -->|/scan| ODOM
+        ODOM -->|/odom| EKF
         ODOM -->|/odom| NAV
         SLAM -->|/map| NAV
         NAV -->|/cmd_vel| CTRL
@@ -168,11 +168,11 @@ ssh pi@<pi-ip> docker load -i dogzilla_jazzy_arm64.tar
 
 ### 3 — Launch
 
-**Robot mode (teleop + IMU/EKF, no LiDAR)**
+**Robot mode (teleop + LiDAR odometry + IMU/EKF)**
 ```bash
 ./docker/run_jazzy.sh --robot
 # open http://<pi-ip>:8080/teleop.html in any browser
-# odometry = dead-reckoning (cmd_vel integration) fused with IMU via EKF
+# odometry = LiDAR scan matching (rf2o) fused with IMU via EKF
 ```
 
 **SLAM — build a map**
@@ -266,13 +266,9 @@ linear/angular velocity into the DOGZILLALib gait commands sent over serial to `
 Also subscribes to the `/dogzilla/*` topics for finer-grained control (pre-defined actions,
 body translation, attitude, pace changes) that go beyond what a Twist can express.
 Publishes `/battery_voltage` by polling the hardware periodically.  
-In `--robot` mode it is launched with `publish_odom:=true publish_tf:=false`.
-`publish_odom:=true` activates dead-reckoning odometry: the node integrates `/cmd_vel`
-velocities over time and publishes `/odom` (nav_msgs/Odometry) as the velocity source for
-the EKF. `publish_tf:=false` delegates the `odom → base_footprint` TF to the EKF, which
-fuses IMU orientation before broadcasting it — without this split, yahboom_ctrl and the EKF
-would publish conflicting TFs and the IMU orientation would be silently overwritten.
-In `--nav` mode rf2o provides `/odom` and both parameters stay at their defaults (false/true).
+In both `--robot` and `--nav` modes, `yahboom_ctrl` runs with its default parameters:
+`publish_odom:=false` (no dead-reckoning — `rf2o_laser_odometry` owns `/odom` in all modes)
+and `publish_tf:=true` (unused since `publish_odom` is false).
 
 **`robot_state_publisher`** · package `robot_state_publisher`  
 Reads the robot URDF (from `yahboom_description`) and the current `/joint_states`, then
@@ -318,15 +314,23 @@ goes through the rosbridge WebSocket.
 
 ### Pi — Robot mode only (`--robot`)
 
+**LiDAR driver** · package `oradar_lidar`  
+Same as SLAM/Nav modes. In robot mode it feeds `rf2o_laser_odometry` and publishes `/scan`
+for visualization in RViz2.
+
+**`rf2o_laser_odometry`** · package `rf2o_laser_odometry`  
+Estimates odometry by scan-matching consecutive LiDAR scans. Publishes `/odom`
+(nav_msgs/Odometry). Launched with `publish_tf:=false` so the EKF owns the
+`odom → base_footprint` TF — without this, rf2o and the EKF would publish conflicting TFs
+and the IMU orientation would be silently overwritten.
+
 **`ekf_node`** · package `robot_localization`  
 An Extended Kalman Filter that fuses two sources to produce a smooth, drift-corrected
-`/odometry/filtered` estimate and — in robot mode — **owns the `odom → base_footprint` TF**
-(yahboom_ctrl's TF is disabled via `publish_tf:=false`):
-- `/odom` — dead-reckoning velocities (vx, vy, vyaw) from `yahboom_ctrl`. Accurate
-  over short intervals but accumulates drift over time.
+`/odometry/filtered` estimate and **owns the `odom → base_footprint` TF**:
+- `/odom` — scan-matched odometry (vx, vy, vyaw) from `rf2o_laser_odometry`. More
+  accurate than dead-reckoning; works without wheel encoders.
 - `/imu/data_raw_self` — orientation (roll, pitch, yaw) from the on-board MPU6050 IMU,
-  read by `yahboom_ctrl`. The IMU provides absolute attitude, which prevents
-  the rotational drift that would otherwise corrupt dead-reckoning, and reflects body
+  read by `yahboom_ctrl`. The IMU provides absolute attitude, which reflects body
   tilt during actions (e.g. sit-down) in the digital twin.
 
 The EKF runs in full 3D mode (`two_d_mode: false`) so roll and pitch from the IMU are
@@ -359,17 +363,9 @@ with `map_saver_cli` and reloaded later for Nav2 localisation.
 
 ### Pi — Nav mode only (`--nav`)
 
-All robot mode nodes, plus:
+All robot mode nodes (LiDAR driver · rf2o · EKF), plus:
 
-**LiDAR driver** · package `oradar_lidar`  
-Same as SLAM mode. In nav mode it feeds both `rf2o_laser_odometry` and the Nav2 costmaps.
-
-**`rf2o_laser_odometry`** · package `rf2o_laser_odometry`  
-Estimates the robot's odometry by scan-matching: each new LiDAR scan is compared to the
-previous one to derive how much the robot moved. The result is published as `/odom`
-(nav_msgs/Odometry). This is the only source of odometry on this robot since it has no
-wheel encoders — the legs are too complex to track mechanically. Scan matching works
-reasonably well on flat surfaces but drifts over time, which is why AMCL is used on top.
+**Nav2 costmaps** also subscribe to `/scan` from the LiDAR driver — same node, additional consumer.
 
 **Nav2 stack** · package `nav2_bringup`  
 A suite of nodes that together provide fully autonomous point-to-point navigation:
@@ -440,7 +436,7 @@ and follows it at a fixed distance). Also drives a buzzer output when objects ar
 | `/joint_states` | `sensor_msgs/JointState` | `yahboom_ctrl` (via DOGZILLALib serial) → `robot_state_publisher` |
 | `/imu/data_raw_self` | `sensor_msgs/Imu` | `yahboom_ctrl` (via DOGZILLALib serial) → `ekf_node` · Nav2 |
 | `/scan` | `sensor_msgs/LaserScan` | LiDAR driver → `slam_toolbox` · `rf2o` · Nav2 costmaps |
-| `/odom` | `nav_msgs/Odometry` | `yahboom_ctrl` (robot mode) · `rf2o` (nav/slam) → `ekf_node` · Nav2 |
+| `/odom` | `nav_msgs/Odometry` | `rf2o` (robot/nav/slam) → `ekf_node` · Nav2 |
 | `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_node` → RViz2 (robot mode only) |
 | `/map` | `nav_msgs/OccupancyGrid` | `slam_toolbox` / Nav2 map_server → RViz2 · Nav2 planners |
 | `/tf`, `/tf_static` | — | `robot_state_publisher` → RViz2 · Nav2 · scan matching |
@@ -455,7 +451,7 @@ dogzilla/
 ├── app_dogzilla/             legacy Flask app (port 6500, no ROS)
 ├── docker/
 │   ├── Dockerfile.jazzy      ROS Jazzy + slam-toolbox + nav2 + robot-localization (ARM64)
-│   ├── entrypoint_robot.sh   --robot: teleop + dead-reckoning odom + IMU/EKF
+│   ├── entrypoint_robot.sh   --robot: teleop + LiDAR rf2o odom + IMU/EKF
 │   ├── entrypoint_slam.sh    --slam: robot stack + LiDAR driver + slam_toolbox
 │   ├── entrypoint_nav.sh     --nav: robot stack + LiDAR + rf2o odometry + optional Nav2
 │   ├── entrypoint_build.sh   --build: colcon build, persists via volume mount
