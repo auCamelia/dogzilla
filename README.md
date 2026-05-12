@@ -256,6 +256,32 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 
 ---
 
+## TF Tree
+
+The TF tree represents the spatial relationships between coordinate frames. Each publisher owns specific frames:
+
+```
+odom
+ └─ base_footprint        ← ekf_node (XY position + 3D orientation fused with IMU)
+     └─ base_link         ← robot_state_publisher (fixed offset from URDF)
+         ├─ laser_frame   ← oradar_lidar static TF (LiDAR height/position)
+         ├─ imu_link      ← static TF (IMU position)
+         └─ lf_hip_joint  ← robot_state_publisher (from /joint_states, 12 DOF)
+             └─ lf_upper_leg_joint
+                 └─ lf_lower_leg_link
+             └─ … (11 more joints)
+```
+
+| Publisher | Frame(s) |
+|---|---|
+| `ekf_node` | `odom → base_footprint` — XYZ + quaternion (rf2o + IMU fused) |
+| `robot_state_publisher` | `base_footprint → base_link` + all 12 leg joints |
+| `oradar_lidar` | `base_link → laser_frame` — static |
+
+TF does **not** carry raw sensor data — `/scan`, `/imu/data_raw_self`, `/odom` flow on their own topics. TF only stores relative poses between frames.
+
+---
+
 ## ROS 2 Node Reference
 
 ### Pi — always active (`--robot` and `--nav`)
