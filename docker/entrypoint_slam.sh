@@ -43,7 +43,8 @@ ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p base_frame_id:=base_footprint \
   -p odom_frame_id:=odom \
   -p publish_tf:=true \
-  -p freq:=10.0 &
+  -p freq:=10.0 \
+  -p "init_pose_from_topic:=" &
 
 # SLAM — builds and publishes /map from /scan + odometry
 ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false &

@@ -52,7 +52,8 @@ ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p base_frame_id:=base_footprint \
   -p odom_frame_id:=odom \
   -p publish_tf:=false \
-  -p freq:=10.0 &
+  -p freq:=10.0 \
+  -p "init_pose_from_topic:=" &
 
 # EKF: fuses /odom (rf2o scan matching) + /imu/data_raw_self (roll/pitch/yaw)
 # → publishes /odometry/filtered + TF odom→base_footprint with full 3D orientation.
