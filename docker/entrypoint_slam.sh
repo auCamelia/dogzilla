@@ -35,13 +35,15 @@ ros2 run dogzilla_teleop web_server --ros-args -p open_browser:=false &
 ros2 launch oradar_lidar ms200_scan.launch.py &
 
 # LiDAR odometry — scan matching between consecutive scans.
-# slam_toolbox uses /odom via /tf, so rf2o publishes TF here (no EKF in slam mode).
-ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py \
-  laser_scan_topic:=/scan \
-  odom_topic:=/odom \
-  base_frame_id:=base_footprint \
-  odom_frame_id:=odom \
-  freq:=10.0 &
+# Use ros2 run (not launch) to actually apply parameter overrides —
+# rf2o_laser_odometry.launch.py hardcodes params without LaunchConfiguration.
+ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
+  -p laser_scan_topic:=/scan \
+  -p odom_topic:=/odom \
+  -p base_frame_id:=base_footprint \
+  -p odom_frame_id:=odom \
+  -p publish_tf:=true \
+  -p freq:=10.0 &
 
 # SLAM — builds and publishes /map from /scan + odometry
 ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false &
