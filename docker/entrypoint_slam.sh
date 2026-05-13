@@ -37,14 +37,11 @@ ros2 launch oradar_lidar ms200_scan.launch.py &
 # LiDAR odometry — scan matching between consecutive scans.
 # Use ros2 run (not launch) to actually apply parameter overrides —
 # rf2o_laser_odometry.launch.py hardcodes params without LaunchConfiguration.
+# Use --params-file so init_pose_from_topic="" parses correctly (rcl rejects bare -p x:=).
+RF2O_PARAMS="/root/yahboomcar_ws/src/yahboom_bringup/config/rf2o_params.yaml"
 ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
-  -p laser_scan_topic:=/scan \
-  -p odom_topic:=/odom \
-  -p base_frame_id:=base_link \
-  -p odom_frame_id:=odom \
-  -p publish_tf:=true \
-  -p freq:=10.0 \
-  -p "init_pose_from_topic:=" &
+  --params-file "${RF2O_PARAMS}" \
+  -p publish_tf:=true &
 
 # SLAM — builds and publishes /map from /scan + odometry
 SLAM_PARAMS="/root/yahboomcar_ws/src/yahboom_bringup/config/slam_toolbox_params.yaml"

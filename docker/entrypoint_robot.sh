@@ -39,14 +39,11 @@ ros2 launch oradar_lidar ms200_scan.launch.py &
 # LiDAR odometry — scan matching between consecutive scans.
 # publish_tf:=false : EKF owns the odom→base_link TF.
 # Use ros2 run (not launch) — rf2o launch file hardcodes params without LaunchConfiguration.
+# Use --params-file so init_pose_from_topic="" parses correctly (rcl rejects bare -p x:=).
+RF2O_PARAMS="/root/yahboomcar_ws/src/yahboom_bringup/config/rf2o_params.yaml"
 ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
-  -p laser_scan_topic:=/scan \
-  -p odom_topic:=/odom \
-  -p base_frame_id:=base_link \
-  -p odom_frame_id:=odom \
-  -p publish_tf:=false \
-  -p freq:=10.0 \
-  -p "init_pose_from_topic:=" &
+  --params-file "${RF2O_PARAMS}" \
+  -p publish_tf:=false &
 
 # EKF: fuses /odom (rf2o scan matching) + /imu/data_raw_self (roll/pitch/yaw)
 # → publishes /odometry/filtered + TF odom→base_link with full 3D orientation.
