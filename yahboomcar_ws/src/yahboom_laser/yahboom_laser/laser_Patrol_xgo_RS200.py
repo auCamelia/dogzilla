@@ -39,7 +39,7 @@ class YahboomCarPatrol(Node):
         self.delta_angle = 0.0
         self.turn_angle = 0.0
         self.odom_frame = "odom"
-        self.base_frame = "base_footprint"
+        self.base_frame = "base_link"
         #create publisher
         self.pub_cmdVel = self.create_publisher(Twist,"/cmd_vel",5)
         #create subscriber

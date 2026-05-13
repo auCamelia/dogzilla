@@ -39,3 +39,8 @@ Thumbs.db
 
 # Logs
 *.log
+
+# ROS bag recordings
+pc_ws/rosbag2_*/
+*.mcap
+*.db3

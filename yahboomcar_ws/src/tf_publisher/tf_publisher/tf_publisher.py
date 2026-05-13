@@ -14,7 +14,7 @@ class TFPublisher(Node):
 
         # 定义IMU和雷达之间的变换
         self.imu_to_lidar_transform = TransformStamped()
-        self.imu_to_lidar_transform.header.frame_id = 'base_footprint'
+        self.imu_to_lidar_transform.header.frame_id = 'odom'
         self.imu_to_lidar_transform.child_frame_id = 'base_link'
         self.imu_to_lidar_transform.transform.translation.x = 0.1154
         self.imu_to_lidar_transform.transform.translation.y = 0.0

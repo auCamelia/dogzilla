@@ -27,7 +27,7 @@ fi
 echo "[NAV] EKF params: ${EKF_PARAMS}"
 
 # Hardware bridge: cmd_vel → serial, joint states + IMU at 10 Hz.
-# No odom publication — rf2o owns /odom. No TF — EKF owns odom→base_footprint.
+# No odom publication — rf2o owns /odom. No TF — EKF owns odom→base_link.
 ros2 run yahboom_base ctrl &
 
 # Robot description
@@ -44,7 +44,7 @@ ros2 run dogzilla_teleop web_server --ros-args -p open_browser:=false &
 ros2 launch oradar_lidar ms200_scan.launch.py &
 
 # LiDAR odometry — scan matching between consecutive scans.
-# publish_tf:=false : EKF owns the odom→base_footprint TF.
+# publish_tf:=false : EKF owns the odom→base_link TF.
 # Use ros2 run (not launch) — rf2o launch file hardcodes params without LaunchConfiguration.
 ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p laser_scan_topic:=/scan \
@@ -56,7 +56,7 @@ ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p "init_pose_from_topic:=" &
 
 # EKF: fuses /odom (rf2o scan matching) + /imu/data_raw_self (roll/pitch/yaw)
-# → publishes /odometry/filtered + TF odom→base_footprint with full 3D orientation.
+# → publishes /odometry/filtered + TF odom→base_link with full 3D orientation.
 ros2 run robot_localization ekf_node --ros-args \
   --params-file "${EKF_PARAMS}" &
 

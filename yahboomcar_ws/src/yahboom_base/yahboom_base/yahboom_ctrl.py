@@ -36,7 +36,7 @@ class YahboomCtrl(Node):
       /joint_states         sensor_msgs/JointState — 12-DOF servo angles at 10 Hz
       /imu/data_raw_self    sensor_msgs/Imu        — roll/pitch/yaw orientation at 10 Hz
       /odom                 nav_msgs/Odometry      — dead-reckoning (only if publish_odom:=true)
-      TF odom→base_footprint                       — only if publish_odom:=true
+      TF odom→base_link                            — only if publish_odom:=true
     """
 
     RATE = 40
@@ -162,7 +162,7 @@ class YahboomCtrl(Node):
             t = TransformStamped()
             t.header.stamp = now.to_msg()
             t.header.frame_id = 'odom'
-            t.child_frame_id = 'base_footprint'
+            t.child_frame_id = 'base_link'
             t.transform.translation.x = self._x
             t.transform.translation.y = self._y
             t.transform.translation.z = 0.0
@@ -173,7 +173,7 @@ class YahboomCtrl(Node):
         odom = Odometry()
         odom.header.stamp = now.to_msg()
         odom.header.frame_id = 'odom'
-        odom.child_frame_id = 'base_footprint'
+        odom.child_frame_id = 'base_link'
         odom.pose.pose.position.x = self._x
         odom.pose.pose.position.y = self._y
         odom.pose.pose.orientation.z = qz
