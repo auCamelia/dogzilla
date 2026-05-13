@@ -262,21 +262,23 @@ The TF tree represents the spatial relationships between coordinate frames. Each
 
 ```
 odom
- └─ base_footprint        ← ekf_node (XY position + 3D orientation fused with IMU)
-     └─ base_link         ← robot_state_publisher (fixed offset from URDF)
-         ├─ laser_frame   ← oradar_lidar static TF (LiDAR height/position)
-         ├─ imu_link      ← static TF (IMU position)
-         └─ lf_hip_joint  ← robot_state_publisher (from /joint_states, 12 DOF)
-             └─ lf_upper_leg_joint
-                 └─ lf_lower_leg_link
-             └─ … (11 more joints)
+ └─ base_link             ← ekf_node (robot mode) / rf2o (slam mode)
+     ├─ laser_frame       ← oradar_lidar static TF (LiDAR height/position)
+     ├─ imu_link          ← static TF (IMU position)
+     └─ lf_hip_joint      ← robot_state_publisher (from /joint_states, 12 DOF)
+         └─ lf_upper_leg_joint
+             └─ lf_lower_leg_link
+         └─ … (11 more joints)
 ```
 
-| Publisher | Frame(s) |
-|---|---|
-| `ekf_node` | `odom → base_footprint` — XYZ + quaternion (rf2o + IMU fused) |
-| `robot_state_publisher` | `base_footprint → base_link` + all 12 leg joints |
-| `oradar_lidar` | `base_link → laser_frame` — static |
+`base_link` is the root of the robot frame — the URDF has no `base_footprint` wrapper (removed to avoid TF conflicts with rf2o).
+
+| Publisher | Frame(s) | Mode |
+|---|---|---|
+| `rf2o_laser_odometry` | `odom → base_link` — scan-matched odometry | slam |
+| `ekf_node` | `odom → base_link` — rf2o + IMU fused | robot / nav |
+| `robot_state_publisher` | all 12 leg joints from `base_link` | all |
+| `oradar_lidar` | `base_link → laser_frame` — static | all |
 
 TF does **not** carry raw sensor data — `/scan`, `/imu/data_raw_self`, `/odom` flow on their own topics. TF only stores relative poses between frames.
 

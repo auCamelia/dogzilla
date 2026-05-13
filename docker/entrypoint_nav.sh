@@ -49,7 +49,7 @@ ros2 launch oradar_lidar ms200_scan.launch.py &
 ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p laser_scan_topic:=/scan \
   -p odom_topic:=/odom \
-  -p base_frame_id:=base_footprint \
+  -p base_frame_id:=base_link \
   -p odom_frame_id:=odom \
   -p publish_tf:=false \
   -p freq:=10.0 \

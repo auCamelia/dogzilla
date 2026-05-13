@@ -40,13 +40,16 @@ ros2 launch oradar_lidar ms200_scan.launch.py &
 ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
   -p laser_scan_topic:=/scan \
   -p odom_topic:=/odom \
-  -p base_frame_id:=base_footprint \
+  -p base_frame_id:=base_link \
   -p odom_frame_id:=odom \
   -p publish_tf:=true \
   -p freq:=10.0 \
   -p "init_pose_from_topic:=" &
 
 # SLAM — builds and publishes /map from /scan + odometry
-ros2 launch slam_toolbox online_async_launch.py use_sim_time:=false &
+SLAM_PARAMS="/root/yahboomcar_ws/src/yahboom_bringup/config/slam_toolbox_params.yaml"
+ros2 launch slam_toolbox online_async_launch.py \
+  use_sim_time:=false \
+  slam_params_file:="${SLAM_PARAMS}" &
 
 wait

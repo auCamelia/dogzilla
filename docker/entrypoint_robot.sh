@@ -37,14 +37,16 @@ ros2 run dogzilla_teleop web_server --ros-args -p open_browser:=false &
 ros2 launch oradar_lidar ms200_scan.launch.py &
 
 # LiDAR odometry — scan matching between consecutive scans.
-# publish_tf:=false : EKF owns the odom→base_footprint TF.
-ros2 launch rf2o_laser_odometry rf2o_laser_odometry.launch.py \
-  laser_scan_topic:=/scan \
-  odom_topic:=/odom \
-  base_frame_id:=base_footprint \
-  odom_frame_id:=odom \
-  freq:=10.0 \
-  publish_tf:=false &
+# publish_tf:=false : EKF owns the odom→base_link TF.
+# Use ros2 run (not launch) — rf2o launch file hardcodes params without LaunchConfiguration.
+ros2 run rf2o_laser_odometry rf2o_laser_odometry_node --ros-args \
+  -p laser_scan_topic:=/scan \
+  -p odom_topic:=/odom \
+  -p base_frame_id:=base_link \
+  -p odom_frame_id:=odom \
+  -p publish_tf:=false \
+  -p freq:=10.0 \
+  -p "init_pose_from_topic:=" &
 
 # EKF: fuses /odom (rf2o scan matching) + /imu/data_raw_self (roll/pitch/yaw)
 # → publishes /odometry/filtered + TF odom→base_footprint with full 3D orientation.
