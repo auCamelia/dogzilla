@@ -15,7 +15,7 @@ amcl:
     alpha3: 0.2          # bruit translation → translation
     alpha4: 0.2          # bruit rotation → translation
     alpha5: 0.2
-    base_frame_id: "base_link"
+    base_frame_id: "base_footprint"
     global_frame_id: "map"
     odom_frame_id: "odom"
     scan_topic: "scan"

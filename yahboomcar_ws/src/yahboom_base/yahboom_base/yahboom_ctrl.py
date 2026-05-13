@@ -162,7 +162,7 @@ class YahboomCtrl(Node):
             t = TransformStamped()
             t.header.stamp = now.to_msg()
             t.header.frame_id = 'odom'
-            t.child_frame_id = 'base_link'
+            t.child_frame_id = 'base_footprint'
             t.transform.translation.x = self._x
             t.transform.translation.y = self._y
             t.transform.translation.z = 0.0
@@ -173,7 +173,7 @@ class YahboomCtrl(Node):
         odom = Odometry()
         odom.header.stamp = now.to_msg()
         odom.header.frame_id = 'odom'
-        odom.child_frame_id = 'base_link'
+        odom.child_frame_id = 'base_footprint'
         odom.pose.pose.position.x = self._x
         odom.pose.pose.position.y = self._y
         odom.pose.pose.orientation.z = qz

@@ -261,23 +261,23 @@ Edit `<address>` inside to set the Pi's static IP if needed.
 The TF tree represents the spatial relationships between coordinate frames. Each publisher owns specific frames:
 
 ```
-odom
- └─ base_link             ← ekf_node (robot mode) / rf2o (slam mode)
-     ├─ laser_frame       ← oradar_lidar static TF (LiDAR height/position)
-     ├─ imu_link          ← static TF (IMU position)
-     └─ lf_hip_joint      ← robot_state_publisher (from /joint_states, 12 DOF)
-         └─ lf_upper_leg_joint
-             └─ lf_lower_leg_link
-         └─ … (11 more joints)
+map
+ └─ odom                  ← slam_toolbox (slam) / AMCL (nav)
+     └─ base_footprint    ← rf2o (slam) / ekf_node (robot + nav)
+         └─ base_link     ← robot_state_publisher (fixed joint, +0.108 m above ground)
+             ├─ laser_frame   ← oradar_lidar static TF (+0.180 m above base_link)
+             ├─ imu_link      ← static TF
+             └─ lf_hip_joint  ← robot_state_publisher (12 DOF from /joint_states)
+                 └─ … (11 more joints)
 ```
 
-`base_link` is the root of the robot frame — the URDF has no `base_footprint` wrapper (removed to avoid TF conflicts with rf2o).
+`base_footprint` is the navigation reference frame (at ground level). `base_link` is the robot body frame, 0.108 m above ground — the URDF fixed joint `base_footprint → base_link` is published by `robot_state_publisher`.
 
 | Publisher | Frame(s) | Mode |
 |---|---|---|
-| `rf2o_laser_odometry` | `odom → base_link` — scan-matched odometry | slam |
-| `ekf_node` | `odom → base_link` — rf2o + IMU fused | robot / nav |
-| `robot_state_publisher` | all 12 leg joints from `base_link` | all |
+| `rf2o_laser_odometry` | `odom → base_footprint` — scan-matched odometry | slam |
+| `ekf_node` | `odom → base_footprint` — rf2o + IMU fused | robot / nav |
+| `robot_state_publisher` | `base_footprint → base_link` + all 12 leg joints | all |
 | `oradar_lidar` | `base_link → laser_frame` — static | all |
 
 TF does **not** carry raw sensor data — `/scan`, `/imu/data_raw_self`, `/odom` flow on their own topics. TF only stores relative poses between frames.
