@@ -1,4 +1,4 @@
-rf2o_laser_odometry_node:
+CLaserOdometry2DNode:
   ros__parameters:
     laser_scan_topic: /scan
     odom_topic: /odom
