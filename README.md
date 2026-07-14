@@ -270,8 +270,8 @@ can't provide.
 
 | Phase | Goal | Status |
 |---|---|---|
-| 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | In progress |
-| 2 | Full walking policy (domain randomization for robustness) | Planned |
+| 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | Done |
+| 2 | Full walking policy (domain randomization for robustness) | Done |
 | 3 | Small-stair climbing (procedural terrain, blind proprioceptive policy) | Planned |
 | 4 | Fall recovery (randomized fallen initial poses) | Planned |
 | 5 | Sim-to-real deployment (new ROS 2 node, sole serial owner, calls `motor()` directly) | Planned |

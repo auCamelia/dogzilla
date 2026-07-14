@@ -9,7 +9,14 @@ robot can actually command/sense through DOGZILLALib:
                  + previous action.
 No body linear/angular velocity or acceleration is included — the real IMU
 can't provide it (see README "Reinforcement Learning (MuJoCo)" section).
+
+Domain randomization (per episode, when randomize=True): body mass/inertia,
+floor friction, actuator gain ("motor strength"), action latency, and random
+push perturbations — covering the main sim2real gaps (unmodeled payload,
+unknown floor surface, servo-to-servo/voltage variation, serial round-trip
+delay, and unmodeled disturbances).
 """
+import collections
 import pathlib
 
 import gymnasium as gym
@@ -29,6 +36,15 @@ MAX_EPISODE_STEPS = 500
 CMD_VX_RANGE = (-0.3, 0.3)
 CMD_VY_RANGE = (-0.15, 0.15)
 CMD_VYAW_RANGE = (-1.0, 1.0)
+
+MASS_RANDOMIZATION_RANGE = (0.8, 1.2)  # scales every body's mass + inertia
+FLOOR_FRICTION_RANGE = (0.5, 1.1)  # sliding friction coefficient
+MOTOR_STRENGTH_RANGE = (0.7, 1.3)  # scales every actuator's kp/kv
+LATENCY_STEPS_RANGE = (0, 2)  # control-step action delay (0-40ms at 50Hz)
+PUSH_INTERVAL_STEPS_RANGE = (100, 300)  # control steps between pushes
+PUSH_FORCE_RANGE = (0.0, 15.0)  # newtons, random horizontal direction
+
+HIP_JOINT_INDICES = [0, 3, 6, 9]  # lf/rf/lh/rh hip, within the 12-joint arrays
 
 
 def quat_to_euler(quat):
@@ -50,8 +66,9 @@ def quat_to_euler(quat):
 class DogzillaWalkEnv(gym.Env):
     metadata = {"render_modes": []}
 
-    def __init__(self):
+    def __init__(self, randomize=True):
         super().__init__()
+        self.randomize = randomize
         self.model = mujoco.MjModel.from_xml_path(str(MODEL_PATH))
         self.data = mujoco.MjData(self.model)
         self.frame_skip = max(1, round(CONTROL_DT / self.model.opt.timestep))
@@ -69,6 +86,49 @@ class DogzillaWalkEnv(gym.Env):
         self._cmd = np.zeros(3, dtype=np.float32)
         self._step_count = 0
         self._rng = np.random.default_rng()
+
+        # Nominal physical parameters, restored/rescaled at the start of every episode.
+        self._nominal_body_mass = self.model.body_mass.copy()
+        self._nominal_body_inertia = self.model.body_inertia.copy()
+        self._nominal_geom_friction = self.model.geom_friction.copy()
+        self._nominal_gainprm = self.model.actuator_gainprm.copy()
+        self._nominal_biasprm = self.model.actuator_biasprm.copy()
+        self._floor_geom_id = self.model.geom("floor").id
+        self._base_body_id = self.model.body("base_link").id
+
+        self._action_buffer = collections.deque(maxlen=LATENCY_STEPS_RANGE[1] + 1)
+        self._next_push_in = 0
+
+    def _randomize_physics(self):
+        mass_scale = self._rng.uniform(*MASS_RANDOMIZATION_RANGE)
+        self.model.body_mass[:] = self._nominal_body_mass * mass_scale
+        self.model.body_inertia[:] = self._nominal_body_inertia * mass_scale
+
+        friction_scale = self._rng.uniform(*FLOOR_FRICTION_RANGE)
+        self.model.geom_friction[self._floor_geom_id] = self._nominal_geom_friction[self._floor_geom_id] * friction_scale
+
+        strength_scale = self._rng.uniform(*MOTOR_STRENGTH_RANGE)
+        self.model.actuator_gainprm[:] = self._nominal_gainprm * strength_scale
+        self.model.actuator_biasprm[:] = self._nominal_biasprm * strength_scale
+
+    def _reset_latency_and_pushes(self):
+        latency_steps = int(self._rng.integers(LATENCY_STEPS_RANGE[0], LATENCY_STEPS_RANGE[1] + 1))
+        # maxlen = latency_steps + 1 so that, once full, buffer[0] is exactly
+        # `latency_steps` control steps older than the action just appended.
+        self._action_buffer = collections.deque(
+            [np.zeros(NUM_JOINTS, dtype=np.float32)] * latency_steps, maxlen=latency_steps + 1,
+        )
+        self._next_push_in = self._rng.integers(*PUSH_INTERVAL_STEPS_RANGE)
+
+    def _maybe_apply_push(self):
+        self._next_push_in -= 1
+        if self._next_push_in > 0:
+            return
+        angle = self._rng.uniform(0, 2 * np.pi)
+        force = self._rng.uniform(*PUSH_FORCE_RANGE)
+        self.data.xfrc_applied[self._base_body_id, 0] = force * np.cos(angle)
+        self.data.xfrc_applied[self._base_body_id, 1] = force * np.sin(angle)
+        self._next_push_in = self._rng.integers(*PUSH_INTERVAL_STEPS_RANGE)
 
     def _sample_command(self):
         vx = self._rng.uniform(*CMD_VX_RANGE)
@@ -106,6 +166,11 @@ class DogzillaWalkEnv(gym.Env):
         super().reset(seed=seed)
         if seed is not None:
             self._rng = np.random.default_rng(seed)
+
+        if self.randomize:
+            self._randomize_physics()
+        self._reset_latency_and_pushes()
+
         mujoco.mj_resetData(self.model, self.data)
         self.data.qpos[2] = 0.15  # matches models/dogzilla.xml base_link start height
         self.data.qpos[3:7] = [1, 0, 0, 0]
@@ -118,11 +183,16 @@ class DogzillaWalkEnv(gym.Env):
 
     def step(self, action):
         action = np.clip(action, -1.0, 1.0).astype(np.float32)
-        target = self._scale_action(action)
+        self._action_buffer.append(action)
+        delayed_action = self._action_buffer[0]
+        target = self._scale_action(delayed_action)
         self.data.ctrl[:] = target
 
+        if self.randomize:
+            self._maybe_apply_push()
         for _ in range(self.frame_skip):
             mujoco.mj_step(self.model, self.data)
+        self.data.xfrc_applied[self._base_body_id, :2] = 0
 
         obs = self._get_obs()
         roll, pitch, _ = quat_to_euler(self.data.qpos[3:7])
@@ -134,7 +204,11 @@ class DogzillaWalkEnv(gym.Env):
         tracking_lin = np.exp(-lin_err / 0.25)
         tracking_yaw = np.exp(-yaw_err / 0.25)
         upright = np.exp(-(roll ** 2 + pitch ** 2) / 0.4)
-        height = np.exp(-((base_z - TARGET_HEIGHT) ** 2) / 0.01)
+        # Tight sigma (~2cm std) so crouching is actually penalized instead of
+        # being a nearly-free way to trade height for easier velocity tracking.
+        height = np.exp(-((base_z - TARGET_HEIGHT) ** 2) / 0.001)
+        hip_angles = obs[HIP_JOINT_INDICES]
+        hip_splay_penalty = -1.0 * np.mean(np.square(hip_angles))
         action_rate_penalty = -0.01 * np.sum((action - self._prev_action) ** 2)
         torque_penalty = -1e-4 * np.sum(np.square(self.data.actuator_force))
         survival = 0.5
@@ -143,7 +217,8 @@ class DogzillaWalkEnv(gym.Env):
             1.0 * tracking_lin
             + 0.5 * tracking_yaw
             + 0.3 * upright
-            + 0.2 * height
+            + 1.0 * height
+            + hip_splay_penalty
             + action_rate_penalty
             + torque_penalty
             + survival
