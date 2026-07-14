@@ -1,0 +1,187 @@
+<mujoco model="dogzilla">
+  <!--
+    Hand-authored from yahboomcar_ws/src/yahboom_description/urdf/yahboom_xgo_rviz.xacro
+    (geometry, meshes, inertials) combined with DOGZILLALib.PARAM["MOTOR_LIMIT"] (real
+    servo angle limits in degrees: hip [-73,57], upper [-66,93], lower [-31,31]) since the
+    xacro's own joint limits are unfilled +-pi placeholders, not the real hardware range.
+
+    Joint naming mirrors DOGZILLALib motor ids (x1=hip/lower-limit, x2=upper leg/middle-limit,
+    x3=lower leg/upper-limit) so sim actions map 1:1 onto DOGZILLALib.motor(motor_id, angle_deg)
+    at deployment time.
+  -->
+  <compiler angle="radian" meshdir="meshes" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+
+  <default>
+    <default class="dogzilla">
+      <geom contype="1" conaffinity="1" condim="3" friction="0.8 0.02 0.01" solref="0.005 1" margin="0.001"/>
+      <joint damping="0.3" armature="0.005" frictionloss="0.02"/>
+      <position kp="6" kv="0.3" forcerange="-3 3"/>
+      <default class="hip">
+        <joint range="-1.27409 0.99484"/>
+        <position ctrlrange="-1.27409 0.99484"/>
+      </default>
+      <default class="upper">
+        <joint range="-1.15192 1.62316"/>
+        <position ctrlrange="-1.15192 1.62316"/>
+      </default>
+      <default class="lower">
+        <joint range="-0.54105 0.54105"/>
+        <position ctrlrange="-0.54105 0.54105"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <material name="body_grey" rgba="0.529 0.549 0.549 1"/>
+    <material name="leg_grey" rgba="0.898 0.918 0.929 1"/>
+    <texture type="2d" name="grid" builtin="checker" rgb1="0.2 0.25 0.3" rgb2="0.25 0.3 0.35" width="300" height="300"/>
+    <material name="floor" texture="grid" texrepeat="5 5" reflectance="0.1"/>
+
+    <mesh name="base_link" file="base_link.STL"/>
+    <mesh name="lf_hip_link" file="lf_hip_link.STL"/>
+    <mesh name="lf_upper_leg_link" file="lf_upper_leg_link.STL"/>
+    <mesh name="lf_lower_leg_link" file="lf_lower_leg_link.STL"/>
+    <mesh name="rf_hip_link" file="rf_hip_link.STL"/>
+    <mesh name="rf_upper_leg_link" file="rf_upper_leg_link.STL"/>
+    <mesh name="rf_lower_leg_link" file="rf_lower_leg_link.STL"/>
+    <mesh name="lh_hip_link" file="lh_hip_link.STL"/>
+    <mesh name="lh_upper_leg_link" file="lh_upper_leg_link.STL"/>
+    <mesh name="lh_lower_leg_link" file="lh_lower_leg_link.STL"/>
+    <mesh name="rh_hip_link" file="rh_hip_link.STL"/>
+    <mesh name="rh_upper_leg_link" file="rh_upper_leg_link.STL"/>
+    <mesh name="rh_lower_leg_link" file="rh_lower_leg_link.STL"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="plane" size="5 5 0.1" material="floor" friction="0.9 0.02 0.01"/>
+
+    <body name="base_link" pos="0 0 0.15" childclass="dogzilla">
+      <freejoint name="root"/>
+      <inertial pos="0.00520835146477011 -0.000260539720599709 0.0280591836024867" mass="0.387351847505872"
+                fullinertia="0.000190614924105559 0.0010563840813291 0.00118548753067654 1.611909782579e-06 -3.19577698047172e-06 -1.54888786284979e-06"/>
+      <geom type="mesh" mesh="base_link" material="body_grey"/>
+
+      <site name="camera_site" pos="0.075751 0 0.059653" size="0.005"/>
+      <site name="laser_site" pos="-0.016732 0.000044164 0.10335" size="0.005"/>
+      <site name="imu_site" pos="0.085 0.000044164 0.070" size="0.005"/>
+
+      <!-- Left-front leg -->
+      <body name="lf_hip_link" pos="0.09332 0.022407 0.01454">
+        <inertial pos="-0.0139720018610026 0.0250894092965121 0.00927328896542384" mass="0.019600254805245"
+                  fullinertia="5.89203493378017e-06 3.7904205321723e-06 6.88837034802653e-06 -5.67038080686865e-07 -2.62883769311083e-07 -1.16491568847576e-06"/>
+        <joint name="lf_hip_joint" type="hinge" axis="-1 0 0" class="hip"/>
+        <geom type="mesh" mesh="lf_hip_link" material="leg_grey"/>
+        <body name="lf_upper_leg_link" pos="-0.018325 0.049313 0">
+          <inertial pos="-0.00689428079248722 -0.0186700000000002 -0.0299480398915498" mass="0.012342949675616"
+                    fullinertia="5.47497407669945e-06 4.86023562858699e-06 1.83454593627849e-06 -3.81090641763637e-22 5.64425515319236e-21 1.43987804089399e-12"/>
+          <joint name="lf_upper_leg_joint" type="hinge" axis="0 1 0" class="upper"/>
+          <geom type="mesh" mesh="lf_upper_leg_link" material="leg_grey"/>
+          <body name="lf_lower_leg_link" pos="0 -0.00072 -0.059896">
+            <inertial pos="-0.0167811557825132 -0.0183250059303989 -0.03162385840477" mass="0.022687879462132"
+                      fullinertia="1.41147289858082e-05 1.36483004430885e-05 1.39274465973039e-06 -5.34206016944144e-13 -9.81905906721924e-07 -2.32220795182774e-12"/>
+            <joint name="lf_lower_leg_joint" type="hinge" axis="0 1 0" class="lower"/>
+            <geom type="mesh" mesh="lf_lower_leg_link" material="leg_grey"/>
+            <site name="lf_foot" pos="-0.017 -0.018 -0.062" size="0.012"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Right-front leg -->
+      <body name="rf_hip_link" pos="0.09332 -0.022517 0.01454">
+        <inertial pos="-0.0139720087743548 -0.0250894047059051 0.00927327973937202" mass="0.00980012555956536"
+                  fullinertia="2.94601764038129e-06 1.89520891096478e-06 3.44418624242758e-06 2.83519397568544e-07 -1.31441224533273e-07 5.82458368574124e-07"/>
+        <joint name="rf_hip_joint" type="hinge" axis="-1 0 0" class="hip"/>
+        <geom type="mesh" mesh="rf_hip_link" material="leg_grey"/>
+        <body name="rf_upper_leg_link" pos="-0.018325 -0.049313 0">
+          <inertial pos="-0.00689428079248688 0.018700000000002 -0.0299480398915499" mass="0.0123429496756159"
+                    fullinertia="5.47497407669944e-06 4.86023562858698e-06 1.83454593627847e-06 -2.0611276716309e-20 1.96257242900458e-21 1.43987803985982e-12"/>
+          <joint name="rf_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper"/>
+          <geom type="mesh" mesh="rf_upper_leg_link" material="leg_grey"/>
+          <body name="rf_lower_leg_link" pos="0 0 -0.059896">
+            <inertial pos="-0.016781155771109 0.0183249940632203 -0.0316238583795284" mass="0.0226878794123114"
+                      fullinertia="1.41147289746255e-05 1.3648300431669e-05 1.39274465829374e-06 -5.3440270556883e-13 -9.81905905136456e-07 -2.32170698199082e-12"/>
+            <joint name="rf_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower"/>
+            <geom type="mesh" mesh="rf_lower_leg_link" material="leg_grey"/>
+            <site name="rf_foot" pos="-0.017 0.018 -0.062" size="0.012"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Left-hind leg -->
+      <body name="lh_hip_link" pos="-0.05668 0.022407 0.01454">
+        <inertial pos="-0.0139720018610022 0.0250894092965121 0.00927328896542402" mass="0.019600254805245"
+                  fullinertia="5.89203493378016e-06 3.79042053217232e-06 6.8883703480265e-06 -5.67038080686868e-07 -2.62883769311102e-07 -1.16491568847579e-06"/>
+        <joint name="lh_hip_joint" type="hinge" axis="1 0 0" class="hip"/>
+        <geom type="mesh" mesh="lh_hip_link" material="leg_grey"/>
+        <body name="lh_upper_leg_link" pos="-0.0183249999999999 0.0493130541805868 0">
+          <inertial pos="-0.00689428079248695 -0.0186700000000005 -0.0299480398915495" mass="0.0123429496756159"
+                    fullinertia="5.47497407669944e-06 4.86023562858698e-06 1.83454593627848e-06 -2.75633243799764e-21 9.32745289581667e-21 1.4398780610445e-12"/>
+          <joint name="lh_upper_leg_joint" type="hinge" axis="0 1 0" class="upper"/>
+          <geom type="mesh" mesh="lh_upper_leg_link" material="leg_grey"/>
+          <body name="lh_lower_leg_link" pos="0 -0.00072 -0.059896">
+            <inertial pos="-0.0167811557787652 -0.0183250059325003 -0.0316238584061345" mass="0.0226878794439316"
+                      fullinertia="1.41147289784473e-05 1.36483004357316e-05 1.39274465908676e-06 -5.34101678210922e-13 -9.81905906147013e-07 -2.32069575705543e-12"/>
+            <joint name="lh_lower_leg_joint" type="hinge" axis="0 1 0" class="lower"/>
+            <geom type="mesh" mesh="lh_lower_leg_link" material="leg_grey"/>
+            <site name="lh_foot" pos="-0.017 -0.018 -0.062" size="0.012"/>
+          </body>
+        </body>
+      </body>
+
+      <!-- Right-hind leg -->
+      <body name="rh_hip_link" pos="-0.05668 -0.022517 0.01454">
+        <inertial pos="-0.0139720087743545 -0.0250894047059051 0.00927327973937168" mass="0.00980012555956509"
+                  fullinertia="2.94601764038125e-06 1.89520891096475e-06 3.44418624242756e-06 2.83519397568547e-07 -1.31441224533272e-07 5.8245836857411e-07"/>
+        <joint name="rh_hip_joint" type="hinge" axis="1 0 0" class="hip"/>
+        <geom type="mesh" mesh="rh_hip_link" material="leg_grey"/>
+        <body name="rh_upper_leg_link" pos="-0.018325 -0.049313 0">
+          <inertial pos="-0.00689428079248684 0.0187000000000015 -0.0299480398915497" mass="0.0123429496756159"
+                    fullinertia="5.47497407669943e-06 4.86023562858697e-06 1.83454593627849e-06 -1.59437966027726e-21 2.38691803281188e-22 1.43987807159176e-12"/>
+          <joint name="rh_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper"/>
+          <geom type="mesh" mesh="rh_upper_leg_link" material="leg_grey"/>
+          <body name="rh_lower_leg_link" pos="0 0 -0.059896">
+            <inertial pos="-0.0167811557016845 0.0183249940379433 -0.0316238581313005" mass="0.0226878792028959"
+                      fullinertia="1.41147288978932e-05 1.36483003526844e-05 1.39274464946125e-06 -5.37750477164225e-13 -9.81905884621754e-07 -2.33519052107278e-12"/>
+            <joint name="rh_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower"/>
+            <geom type="mesh" mesh="rh_lower_leg_link" material="leg_grey"/>
+            <site name="rh_foot" pos="-0.017 0.018 -0.062" size="0.012"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="lf_hip" joint="lf_hip_joint" class="hip"/>
+    <position name="lf_upper" joint="lf_upper_leg_joint" class="upper"/>
+    <position name="lf_lower" joint="lf_lower_leg_joint" class="lower"/>
+    <position name="rf_hip" joint="rf_hip_joint" class="hip"/>
+    <position name="rf_upper" joint="rf_upper_leg_joint" class="upper"/>
+    <position name="rf_lower" joint="rf_lower_leg_joint" class="lower"/>
+    <position name="lh_hip" joint="lh_hip_joint" class="hip"/>
+    <position name="lh_upper" joint="lh_upper_leg_joint" class="upper"/>
+    <position name="lh_lower" joint="lh_lower_leg_joint" class="lower"/>
+    <position name="rh_hip" joint="rh_hip_joint" class="hip"/>
+    <position name="rh_upper" joint="rh_upper_leg_joint" class="upper"/>
+    <position name="rh_lower" joint="rh_lower_leg_joint" class="lower"/>
+  </actuator>
+
+  <sensor>
+    <framequat name="orientation" objtype="site" objname="imu_site"/>
+    <gyro name="angular_velocity" site="imu_site"/>
+    <jointpos name="lf_hip_pos" joint="lf_hip_joint"/>
+    <jointpos name="lf_upper_pos" joint="lf_upper_leg_joint"/>
+    <jointpos name="lf_lower_pos" joint="lf_lower_leg_joint"/>
+    <jointpos name="rf_hip_pos" joint="rf_hip_joint"/>
+    <jointpos name="rf_upper_pos" joint="rf_upper_leg_joint"/>
+    <jointpos name="rf_lower_pos" joint="rf_lower_leg_joint"/>
+    <jointpos name="lh_hip_pos" joint="lh_hip_joint"/>
+    <jointpos name="lh_upper_pos" joint="lh_upper_leg_joint"/>
+    <jointpos name="lh_lower_pos" joint="lh_lower_leg_joint"/>
+    <jointpos name="rh_hip_pos" joint="rh_hip_joint"/>
+    <jointpos name="rh_upper_pos" joint="rh_upper_leg_joint"/>
+    <jointpos name="rh_lower_pos" joint="rh_lower_leg_joint"/>
+  </sensor>
+</mujoco>

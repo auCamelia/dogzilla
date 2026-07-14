@@ -242,6 +242,45 @@ Nav2 params: `yahboomcar_ws/src/yahboom_bringup/config/nav2_params.yaml`
 
 ---
 
+## Reinforcement Learning (MuJoCo)
+
+A separate, dev-PC-only initiative to teach DOGZILLA new locomotion skills — beyond
+what the onboard firmware can do — using MuJoCo + Gymnasium + Stable-Baselines3 (PPO).
+Lives entirely under `mujoco_rl/`, is never built into the Pi's Docker image, and is
+independent from the ROS 2 workspaces above.
+
+**Why bypass the firmware gait?** All walking/IK/stabilization on the real robot
+currently happens inside undocumented onboard firmware, reached only through
+`DOGZILLALib`'s serial protocol. `yahboom_gait` and `yahboom_set_height` are stateless
+passthroughs (`cmd_vel` → firmware `move_x/move_y/turn`) — there's no kinematics on the
+ROS/Python side to train or improve. The firmware does expose one lower-level hook that
+an RL policy can target instead: `DOGZILLALib.motor(motor_id, angle)`, direct per-servo
+position control for all 12 joints. An RL policy commanding joint angles through this
+interface can learn its own gait, sidestepping the fixed firmware behavior entirely.
+
+**Why proprioception-only observations?** The real robot's only usable sensing is
+`read_motor()` (12 joint angles) and `read_roll/pitch/yaw()` (orientation) — the onboard
+IMU exposes no angular velocity or linear acceleration (see the EKF section above, which
+marks those covariances unavailable). The simulated observation space mirrors this
+exactly (joint angles + finite-differenced joint velocities + roll/pitch/yaw + commanded
+velocity + previous action) so a trained policy doesn't rely on signals the real hardware
+can't provide.
+
+**Roadmap:**
+
+| Phase | Goal | Status |
+|---|---|---|
+| 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | In progress |
+| 2 | Full walking policy (domain randomization for robustness) | Planned |
+| 3 | Small-stair climbing (procedural terrain, blind proprioceptive policy) | Planned |
+| 4 | Fall recovery (randomized fallen initial poses) | Planned |
+| 5 | Sim-to-real deployment (new ROS 2 node, sole serial owner, calls `motor()` directly) | Planned |
+| 6 | Nav2 integration | Open question — Nav2 (mapping/AMCL/planning) stays either way; only whether its `/cmd_vel` output eventually drives the learned policy instead of firmware gait is undecided |
+
+See `mujoco_rl/README.md` for setup and usage.
+
+---
+
 ## PC ↔ Pi Networking
 
 Both machines must share `ROS_DOMAIN_ID=0` on the same LAN.
@@ -476,6 +515,11 @@ and follows it at a fixed distance). Also drives a buzzer output when objects ar
 dogzilla/
 ├── DOGZILLALib/              hardware library — serial framing to /dev/ttyAMA0
 ├── app_dogzilla/             legacy Flask app (port 6500, no ROS)
+├── mujoco_rl/                MuJoCo + Gymnasium + SB3 RL training (dev PC only, not in Docker)
+│   ├── models/                dogzilla.xml (MJCF) + meshes
+│   ├── envs/                  Gymnasium environments
+│   ├── training/               PPO training entry points
+│   └── scripts/                model viewer / sanity checks
 ├── docker/
 │   ├── Dockerfile.jazzy      ROS Jazzy + slam-toolbox + nav2 + robot-localization (ARM64)
 │   ├── entrypoint_robot.sh   --robot: teleop + LiDAR rf2o odom + IMU/EKF

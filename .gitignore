@@ -44,3 +44,6 @@ Thumbs.db
 pc_ws/rosbag2_*/
 *.mcap
 *.db3
+
+# MuJoCo RL training artifacts
+mujoco_rl/checkpoints/
