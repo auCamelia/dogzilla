@@ -47,3 +47,10 @@ pc_ws/rosbag2_*/
 
 # MuJoCo RL training artifacts
 mujoco_rl/checkpoints/
+
+# MuJoCo GUI debug dumps (simulate app's "print model/data" and screenshot keys)
+mujoco_rl/MJDATA.TXT
+mujoco_rl/MJMODEL.TXT
+mujoco_rl/mjmodel.mjb
+mujoco_rl/mjmodel.xml
+mujoco_rl/screenshot.png

@@ -2,12 +2,22 @@
   <!--
     Hand-authored from yahboomcar_ws/src/yahboom_description/urdf/yahboom_xgo_rviz.xacro
     (geometry, meshes, inertials) combined with DOGZILLALib.PARAM["MOTOR_LIMIT"] (real
-    servo angle limits in degrees: hip [-73,57], upper [-66,93], lower [-31,31]) since the
+    servo angle SPANS in degrees: hip [-73,57], upper [-66,93], lower [-31,31]) since the
     xacro's own joint limits are unfilled +-pi placeholders, not the real hardware range.
 
     Joint naming mirrors DOGZILLALib motor ids (x1=hip/lower-limit, x2=upper leg/middle-limit,
     x3=lower leg/upper-limit) so sim actions map 1:1 onto DOGZILLALib.motor(motor_id, angle_deg)
     at deployment time.
+
+    IMPORTANT: MOTOR_LIMIT's spans are centered on the real robot's power-on/calibration
+    pose (per its factory "Software calibration.pdf": thigh-body and calf-thigh both at
+    90 degrees), NOT on this mesh's own zero pose (which is a fully straight leg -- an
+    unrelated CAD export artifact). Confirmed empirically 2026-07-15 with scripts/tune_pose.py
+    against the real robot: in THIS model's straight-leg-zero convention, the natural
+    pose sits at hip=0, upper=+35.7deg (left) / -35.7deg (right), lower=-85.0deg (left) /
+    +85.0deg (right) -- hence the upper/lower ranges below are MOTOR_LIMIT's span shifted
+    to center on those values, split into left/right classes since the rest angle differs
+    in sign between the two sides (hip needed no such shift/split).
   -->
   <compiler angle="radian" meshdir="meshes" autolimits="true"/>
   <option timestep="0.002" integrator="implicitfast"/>
@@ -21,13 +31,23 @@
         <joint range="-1.27409 0.99484"/>
         <position ctrlrange="-1.27409 0.99484"/>
       </default>
-      <default class="upper">
-        <joint range="-1.15192 1.62316"/>
-        <position ctrlrange="-1.15192 1.62316"/>
+      <!-- upper/lower: MOTOR_LIMIT span ([-66,93]deg / [-31,31]deg) re-centered on the
+           real power-on pose (+35.7deg / -85.0deg left, mirrored right), not on 0. -->
+      <default class="upper_left">
+        <joint range="-0.52884 2.24623"/>
+        <position ctrlrange="-0.52884 2.24623"/>
       </default>
-      <default class="lower">
-        <joint range="-0.54105 0.54105"/>
-        <position ctrlrange="-0.54105 0.54105"/>
+      <default class="upper_right">
+        <joint range="-1.77493 1.00007"/>
+        <position ctrlrange="-1.77493 1.00007"/>
+      </default>
+      <default class="lower_left">
+        <joint range="-2.02458 -0.94248"/>
+        <position ctrlrange="-2.02458 -0.94248"/>
+      </default>
+      <default class="lower_right">
+        <joint range="0.94248 2.02458"/>
+        <position ctrlrange="0.94248 2.02458"/>
       </default>
     </default>
   </default>
@@ -76,12 +96,12 @@
         <body name="lf_upper_leg_link" pos="-0.018325 0.049313 0">
           <inertial pos="-0.00689428079248722 -0.0186700000000002 -0.0299480398915498" mass="0.012342949675616"
                     fullinertia="5.47497407669945e-06 4.86023562858699e-06 1.83454593627849e-06 -3.81090641763637e-22 5.64425515319236e-21 1.43987804089399e-12"/>
-          <joint name="lf_upper_leg_joint" type="hinge" axis="0 1 0" class="upper"/>
+          <joint name="lf_upper_leg_joint" type="hinge" axis="0 1 0" class="upper_left"/>
           <geom type="mesh" mesh="lf_upper_leg_link" material="leg_grey"/>
           <body name="lf_lower_leg_link" pos="0 -0.00072 -0.059896">
             <inertial pos="-0.0167811557825132 -0.0183250059303989 -0.03162385840477" mass="0.022687879462132"
                       fullinertia="1.41147289858082e-05 1.36483004430885e-05 1.39274465973039e-06 -5.34206016944144e-13 -9.81905906721924e-07 -2.32220795182774e-12"/>
-            <joint name="lf_lower_leg_joint" type="hinge" axis="0 1 0" class="lower"/>
+            <joint name="lf_lower_leg_joint" type="hinge" axis="0 1 0" class="lower_left"/>
             <geom type="mesh" mesh="lf_lower_leg_link" material="leg_grey"/>
             <site name="lf_foot" pos="-0.017 -0.018 -0.062" size="0.012"/>
           </body>
@@ -97,12 +117,12 @@
         <body name="rf_upper_leg_link" pos="-0.018325 -0.049313 0">
           <inertial pos="-0.00689428079248688 0.018700000000002 -0.0299480398915499" mass="0.0123429496756159"
                     fullinertia="5.47497407669944e-06 4.86023562858698e-06 1.83454593627847e-06 -2.0611276716309e-20 1.96257242900458e-21 1.43987803985982e-12"/>
-          <joint name="rf_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper"/>
+          <joint name="rf_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper_right"/>
           <geom type="mesh" mesh="rf_upper_leg_link" material="leg_grey"/>
           <body name="rf_lower_leg_link" pos="0 0 -0.059896">
             <inertial pos="-0.016781155771109 0.0183249940632203 -0.0316238583795284" mass="0.0226878794123114"
                       fullinertia="1.41147289746255e-05 1.3648300431669e-05 1.39274465829374e-06 -5.3440270556883e-13 -9.81905905136456e-07 -2.32170698199082e-12"/>
-            <joint name="rf_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower"/>
+            <joint name="rf_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower_right"/>
             <geom type="mesh" mesh="rf_lower_leg_link" material="leg_grey"/>
             <site name="rf_foot" pos="-0.017 0.018 -0.062" size="0.012"/>
           </body>
@@ -118,12 +138,12 @@
         <body name="lh_upper_leg_link" pos="-0.0183249999999999 0.0493130541805868 0">
           <inertial pos="-0.00689428079248695 -0.0186700000000005 -0.0299480398915495" mass="0.0123429496756159"
                     fullinertia="5.47497407669944e-06 4.86023562858698e-06 1.83454593627848e-06 -2.75633243799764e-21 9.32745289581667e-21 1.4398780610445e-12"/>
-          <joint name="lh_upper_leg_joint" type="hinge" axis="0 1 0" class="upper"/>
+          <joint name="lh_upper_leg_joint" type="hinge" axis="0 1 0" class="upper_left"/>
           <geom type="mesh" mesh="lh_upper_leg_link" material="leg_grey"/>
           <body name="lh_lower_leg_link" pos="0 -0.00072 -0.059896">
             <inertial pos="-0.0167811557787652 -0.0183250059325003 -0.0316238584061345" mass="0.0226878794439316"
                       fullinertia="1.41147289784473e-05 1.36483004357316e-05 1.39274465908676e-06 -5.34101678210922e-13 -9.81905906147013e-07 -2.32069575705543e-12"/>
-            <joint name="lh_lower_leg_joint" type="hinge" axis="0 1 0" class="lower"/>
+            <joint name="lh_lower_leg_joint" type="hinge" axis="0 1 0" class="lower_left"/>
             <geom type="mesh" mesh="lh_lower_leg_link" material="leg_grey"/>
             <site name="lh_foot" pos="-0.017 -0.018 -0.062" size="0.012"/>
           </body>
@@ -139,12 +159,12 @@
         <body name="rh_upper_leg_link" pos="-0.018325 -0.049313 0">
           <inertial pos="-0.00689428079248684 0.0187000000000015 -0.0299480398915497" mass="0.0123429496756159"
                     fullinertia="5.47497407669943e-06 4.86023562858697e-06 1.83454593627849e-06 -1.59437966027726e-21 2.38691803281188e-22 1.43987807159176e-12"/>
-          <joint name="rh_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper"/>
+          <joint name="rh_upper_leg_joint" type="hinge" axis="0 -1 0" class="upper_right"/>
           <geom type="mesh" mesh="rh_upper_leg_link" material="leg_grey"/>
           <body name="rh_lower_leg_link" pos="0 0 -0.059896">
             <inertial pos="-0.0167811557016845 0.0183249940379433 -0.0316238581313005" mass="0.0226878792028959"
                       fullinertia="1.41147288978932e-05 1.36483003526844e-05 1.39274464946125e-06 -5.37750477164225e-13 -9.81905884621754e-07 -2.33519052107278e-12"/>
-            <joint name="rh_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower"/>
+            <joint name="rh_lower_leg_joint" type="hinge" axis="0 -1 0" class="lower_right"/>
             <geom type="mesh" mesh="rh_lower_leg_link" material="leg_grey"/>
             <site name="rh_foot" pos="-0.017 0.018 -0.062" size="0.012"/>
           </body>
@@ -155,17 +175,17 @@
 
   <actuator>
     <position name="lf_hip" joint="lf_hip_joint" class="hip"/>
-    <position name="lf_upper" joint="lf_upper_leg_joint" class="upper"/>
-    <position name="lf_lower" joint="lf_lower_leg_joint" class="lower"/>
+    <position name="lf_upper" joint="lf_upper_leg_joint" class="upper_left"/>
+    <position name="lf_lower" joint="lf_lower_leg_joint" class="lower_left"/>
     <position name="rf_hip" joint="rf_hip_joint" class="hip"/>
-    <position name="rf_upper" joint="rf_upper_leg_joint" class="upper"/>
-    <position name="rf_lower" joint="rf_lower_leg_joint" class="lower"/>
+    <position name="rf_upper" joint="rf_upper_leg_joint" class="upper_right"/>
+    <position name="rf_lower" joint="rf_lower_leg_joint" class="lower_right"/>
     <position name="lh_hip" joint="lh_hip_joint" class="hip"/>
-    <position name="lh_upper" joint="lh_upper_leg_joint" class="upper"/>
-    <position name="lh_lower" joint="lh_lower_leg_joint" class="lower"/>
+    <position name="lh_upper" joint="lh_upper_leg_joint" class="upper_left"/>
+    <position name="lh_lower" joint="lh_lower_leg_joint" class="lower_left"/>
     <position name="rh_hip" joint="rh_hip_joint" class="hip"/>
-    <position name="rh_upper" joint="rh_upper_leg_joint" class="upper"/>
-    <position name="rh_lower" joint="rh_lower_leg_joint" class="lower"/>
+    <position name="rh_upper" joint="rh_upper_leg_joint" class="upper_right"/>
+    <position name="rh_lower" joint="rh_lower_leg_joint" class="lower_right"/>
   </actuator>
 
   <sensor>

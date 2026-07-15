@@ -64,7 +64,7 @@ See "Command reference" below for every flag on every script.
 
 Hand-authored MJCF, not an automatic URDF conversion. Geometry, meshes, and inertials
 come from `yahboomcar_ws/src/yahboom_description/urdf/yahboom_xgo_rviz.xacro`; joint
-ranges come from `DOGZILLALib.PARAM["MOTOR_LIMIT"]` (the real servo angle limits in
+ranges come from `DOGZILLALib.PARAM["MOTOR_LIMIT"]` (the real servo angle *spans* in
 degrees: hip `[-73,57]`, upper leg `[-66,93]`, lower leg `[-31,31]`) since the xacro's own
 joint limits are unfilled `±π` placeholders. Joint/actuator naming mirrors DOGZILLALib's
 motor id convention (x1 = hip, x2 = upper leg, x3 = lower leg) so a trained action maps
@@ -73,6 +73,30 @@ directly onto `DOGZILLALib.motor(motor_id, angle_deg)` at deployment time.
 Collision uses the visual meshes directly (MuJoCo's implicit convex hull) rather than
 hand-placed primitives — a reasonable first-pass approximation; revisit if foot contact
 behavior looks wrong once gaits start forming.
+
+> **Lesson learned (joint-range offset, 2026-07-15 — invalidates all prior checkpoints):**
+> `MOTOR_LIMIT`'s spans are centered on the real robot's *power-on/calibration* pose (its
+> factory `Software calibration.pdf`: thigh-body and calf-thigh both folded to 90°), **not**
+> on this mesh's own zero pose (a fully straight leg — an unrelated CAD-export artifact).
+> The model originally applied `MOTOR_LIMIT` centered on straight-leg-zero, which was
+> simply wrong — it let the sim explore a window of motion the real robot's firmware can't
+> reach, and started every episode from an unreachable, unnatural straight-leg pose (this
+> is almost certainly what "the gait looks like a paraplegic's" and "the rear legs are
+> rigid" feedback, mid-Phase-2/3, was really pointing at, on top of the reward-shaping
+> issues documented elsewhere in this file).
+>
+> Found by comparing photos of the real robot's rest pose against rendered sim poses,
+> then confirmed by hand with `scripts/tune_pose.py` (a full interactive MuJoCo GUI with
+> per-joint control sliders, gravity disabled so the robot floats instead of falling while
+> you pose it) against the physical unit. Measured real rest pose, in this mesh's
+> straight-leg-zero convention: hip=0°, upper leg=+35.7°/-35.7° (left/right), lower
+> leg=-85.0°/+85.0° (left/right) — see `envs/dogzilla_env.py`'s `REST_POSE_RAD`. The
+> `upper`/`lower` default classes were split into `upper_left`/`upper_right`/`lower_left`/
+> `lower_right`, each `MOTOR_LIMIT`'s span re-centered on the matching side's measured
+> angle instead of on 0 (hip needed no such correction — measured at 0° on both sides,
+> matching the mesh's own zero). Every environment now starts episodes from `REST_POSE_RAD`
+> instead of all-zero joint angles. **This changes the action space's meaning entirely —
+> every checkpoint trained before this fix is stale and cannot be warm-started from.**
 
 Servo PD gains (`kp`/`kv` on the `<position>` actuators) are a first-pass guess, since
 `DOGZILLALib` doesn't expose real servo gain/torque constants — tune by feel in
@@ -315,6 +339,18 @@ python3 scripts/view_model.py             # opens a window, robot drops from 0.1
 python3 scripts/view_model.py --headless  # for scripts/CI — no window, just prints numbers
 ```
 
+### `scripts/tune_pose.py` — find/verify a joint pose against the real robot
+
+Opens the *full* interactive MuJoCo GUI (not the minimal passive viewer), with gravity
+disabled so the robot floats in place instead of falling/tipping over while you drag each
+joint's control slider (in the "Control" panel) and compare directly against the physical
+robot. No flags — everything is done live in the GUI. Angles print in radians and degrees
+when you close the window. This is how `envs/dogzilla_env.py`'s `REST_POSE_RAD` was found.
+
+```bash
+python3 scripts/tune_pose.py
+```
+
 ### `training/train_walk.py` and `training/train_stairs.py` — PPO training
 
 | Flag | Default | Meaning |
@@ -374,8 +410,8 @@ during cleanup, after all episodes have already finished and printed their resul
 | Phase | Goal | Status |
 |---|---|---|
 | 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | Done |
-| 2 | Full walking policy + domain randomization | Done (retrained once to fix a stiff-leg defect, see below) |
-| 3 | Small-stair climbing (procedural terrain) | In progress — approaches reliably, occasional single-step crossing, full climb not yet reliable |
+| 2 | Full walking policy + domain randomization | Needs retraining — the joint-range/rest-pose fix (see "Model" above) changed the action space; prior checkpoint is stale |
+| 3 | Small-stair climbing (procedural terrain) | Needs retraining, same reason as Phase 2 — prior progress (occasional single-step crossing) was against the old, incorrect joint ranges |
 | 4 | Fall recovery | Not started |
 | 5 | Sim-to-real deployment (new ROS 2 node, calls `DOGZILLALib.motor()` directly) | Not started |
 | 6 | Nav2 integration | Open question, not decided |

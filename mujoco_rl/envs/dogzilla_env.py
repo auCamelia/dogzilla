@@ -28,7 +28,7 @@ MODEL_PATH = pathlib.Path(__file__).resolve().parent.parent / "models" / "dogzil
 
 NUM_JOINTS = 12
 CONTROL_DT = 0.02  # 50 Hz control rate
-TARGET_HEIGHT = 0.127  # measured settled standing height, see scripts/view_model.py --headless
+TARGET_HEIGHT = 0.108  # measured settled standing height from REST_POSE_RAD, see scripts/view_model.py --headless
 FALL_TILT_LIMIT = 0.9  # rad (~51.5 deg) — episode ends past this
 FALL_HEIGHT_LIMIT = 0.04  # m
 MAX_EPISODE_STEPS = 500
@@ -48,6 +48,19 @@ HIP_JOINT_INDICES = [0, 3, 6, 9]  # lf/rf/lh/rh hip, within the 12-joint arrays
 LEG_FLEX_JOINT_INDICES = [1, 2, 4, 5, 7, 8, 10, 11]  # upper/lower leg joints (knees), not hips
 JOINT_EXTREME_MARGIN = 0.85  # only penalize within the outer 15% of a joint's range
 JOINT_EXTREME_WEIGHT = 3.0  # discourages locking legs straight at the range limit
+
+# Real robot power-on pose, measured 2026-07-15 against the physical unit with
+# scripts/tune_pose.py (hip=0, upper/lower mirrored between left and right --
+# see models/dogzilla.xml's header comment for the full story). This mesh's
+# own zero pose is a fully straight leg, unrelated to the real rest pose, so
+# episodes must start here explicitly rather than at all-zero joint angles.
+REST_POSE_DEG = np.array([
+    0.0, 35.7, -85.0,   # lf: hip, upper, lower
+    0.0, -35.7, 85.0,   # rf
+    0.0, 35.7, -85.0,   # lh
+    0.0, -35.7, 85.0,   # rh
+])
+REST_POSE_RAD = np.deg2rad(REST_POSE_DEG)
 
 
 def quat_to_euler(quat):
@@ -175,8 +188,10 @@ class DogzillaWalkEnv(gym.Env):
         self._reset_latency_and_pushes()
 
         mujoco.mj_resetData(self.model, self.data)
-        self.data.qpos[2] = 0.15  # matches models/dogzilla.xml base_link start height
+        self.data.qpos[2] = 0.15  # settles to the real standing height under gravity
         self.data.qpos[3:7] = [1, 0, 0, 0]
+        self.data.qpos[self.joint_qpos_adr] = REST_POSE_RAD
+        self.data.ctrl[:] = REST_POSE_RAD
         mujoco.mj_forward(self.model, self.data)
 
         self._prev_action = np.zeros(NUM_JOINTS, dtype=np.float32)

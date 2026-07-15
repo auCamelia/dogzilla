@@ -29,6 +29,7 @@ from envs.dogzilla_env import (
     MASS_RANDOMIZATION_RANGE,
     MOTOR_STRENGTH_RANGE,
     NUM_JOINTS,
+    REST_POSE_RAD,
     TARGET_HEIGHT,
     DogzillaWalkEnv,
     quat_to_euler,
@@ -146,6 +147,8 @@ class DogzillaStairsEnv(DogzillaWalkEnv):
         self.data.qpos[0] = -0.5  # start midway across the flat platform, facing the stairs
         self.data.qpos[2] = 0.15
         self.data.qpos[3:7] = [1, 0, 0, 0]
+        self.data.qpos[self.joint_qpos_adr] = REST_POSE_RAD
+        self.data.ctrl[:] = REST_POSE_RAD
         mujoco.mj_forward(self.model, self.data)
 
         self._prev_action = np.zeros(NUM_JOINTS, dtype=np.float32)
