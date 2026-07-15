@@ -9,6 +9,8 @@ Usage:
     python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip --record rollout.mp4 --no-randomize
     python3 scripts/rollout_policy.py checkpoints/stairs/final_model.zip --env stairs --record stairs.mp4 --no-randomize
     python3 scripts/rollout_policy.py checkpoints/stairs/final_model.zip --env stairs --no-randomize --speed 0.4  # slow motion
+    python3 scripts/rollout_policy.py checkpoints/stairs_v10_onestep/final_model.zip --env stairs --active-steps 1  # match training's --max-active-steps
+    python3 scripts/rollout_policy.py checkpoints/plateau/final_model.zip --env plateau --no-randomize
 """
 import argparse
 import pathlib
@@ -21,9 +23,10 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from envs.dogzilla_env import DogzillaWalkEnv
+from envs.dogzilla_plateau_env import DogzillaPlateauEnv
 from envs.dogzilla_stairs_env import DogzillaStairsEnv
 
-ENVS = {"walk": DogzillaWalkEnv, "stairs": DogzillaStairsEnv}
+ENVS = {"walk": DogzillaWalkEnv, "stairs": DogzillaStairsEnv, "plateau": DogzillaPlateauEnv}
 
 
 def run_interactive(model, env, episodes, seed, speed=1.0):
@@ -92,10 +95,13 @@ def main():
     parser.add_argument("--record", type=str, default=None, help="if set, render headless to this MP4 path instead of opening the interactive viewer")
     parser.add_argument("--env", type=str, default="walk", choices=sorted(ENVS), help="which task env the checkpoint was trained on")
     parser.add_argument("--speed", type=float, default=1.0, help="interactive viewer playback speed multiplier (e.g. 0.3 to slow down, 2.0 to speed up)")
+    parser.add_argument("--active-steps", type=int, default=None, help="stairs env only: match whatever --max-active-steps the checkpoint was trained with (defaults to all 5 steps otherwise, which will look wrong for a checkpoint trained on fewer)")
     args = parser.parse_args()
 
     model = PPO.load(args.checkpoint)
     env = ENVS[args.env](randomize=not args.no_randomize)
+    if args.active_steps is not None:
+        env.set_active_steps(args.active_steps)
 
     if args.record:
         run_record(model, env, args.episodes, args.seed, args.record)

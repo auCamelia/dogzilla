@@ -324,6 +324,42 @@ existed.
 > above (`joint_extreme_penalty`); the stairs task warm-starts from the walk policy, so it
 > inherited the defect until the base policy was retrained.
 
+> **5 — After the joint-range/rest-pose fix (see "Model" above), warm-starting from the
+> walk policy stopped helping — training from scratch worked better.** Immediately after
+> fixing the joint-range/rest-pose bug, warm-starting stairs training from the freshly
+> corrected walk policy produced 0/8 successful step crossings across a full evaluation
+> batch (worse than pre-fix attempts). The walk policy had never experienced the new, more
+> crouched rest pose in any context other than flat-ground walking, and likely anchored the
+> stairs policy into a bad flat-ground-shaped local optimum for this very different
+> pose/task combination. Training from scratch (random init) instead, on the same
+> single-step task, got 2/8 successful crossings, including one full-episode clean climb —
+> the first fully confirmed stair crossing all session. **Lesson: warm-starting is a
+> reasonable default, but re-check it every time the base checkpoint's own pose/behavior
+> changes underneath it — it can silently flip from helping to hurting.** `--max-active-steps
+> 1` (below) was also introduced at this point: focusing entirely on a single riser before
+> ever attempting the full 5-step staircase.
+
+## Plateau environment (`envs/dogzilla_plateau_env.py`, `training/train_plateau.py`)
+
+A simpler cousin of the stairs task: step **up** onto a raised platform, walk across, step
+**back down** to ground level — one up-step and one down-step, instead of a multi-step
+staircase. Added because climbing a full 5-step staircase from scratch proved to be a lot
+of accumulated difficulty at once (see the stairs lessons above); this isolates "handle a
+single up-step, then a single down-step" as its own task, sharing the exact same reward
+machinery as the stairs env (terrain-relative height, progress, foot clearance, hip-splay/
+joint-extremity penalties, stall-window early termination — see `envs/dogzilla_stairs_env.py`
+for why each term exists).
+
+`envs/terrain.py`'s `build_plateau_xml()` follows the same text-injection technique as the
+stairs terrain: start platform (height 0) → plateau (height randomized per episode,
+`PLATEAU_HEIGHT_RANGE = (0.01, 0.04)`, same span as the stairs task) → landing platform
+(height 0). Only the plateau geom's height is mutated per episode (`randomize_plateau_height`)
+— the start/landing platforms are always at height 0, so there's exactly one up-step and
+one down-step, at the same height, per episode. `training/train_plateau.py`'s
+`PlateauCurriculum` ramps just the height (no step-count axis needed, since there's only
+ever one step in each direction) from near-flat to the full range over the first 70% of
+training, same idea as `StairsCurriculum`.
+
 ## Command reference
 
 All commands assume `cd mujoco_rl && source .venv/bin/activate` first.
@@ -351,7 +387,7 @@ when you close the window. This is how `envs/dogzilla_env.py`'s `REST_POSE_RAD` 
 python3 scripts/tune_pose.py
 ```
 
-### `training/train_walk.py` and `training/train_stairs.py` — PPO training
+### `training/train_walk.py`, `training/train_stairs.py`, `training/train_plateau.py` — PPO training
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -359,26 +395,34 @@ python3 scripts/tune_pose.py
 | `--timesteps N` | `20000000` | total environment steps to train for |
 | `--n-envs N` | `8` | parallel `SubprocVecEnv` copies (match to CPU core count) |
 | `--checkpoint-freq N` | `200000` | environment steps between saved checkpoints |
-| `--run-name NAME` | `walk` / `stairs` | checkpoints go to `checkpoints/<run-name>/` |
-| `--warm-start PATH` | none | initialize weights from an existing `.zip` checkpoint instead of random init (e.g. bootstrap stairs from the walk policy) |
+| `--run-name NAME` | `walk` / `stairs` / `plateau` | checkpoints go to `checkpoints/<run-name>/` |
+| `--warm-start PATH` | none | initialize weights from an existing `.zip` checkpoint instead of random init (e.g. bootstrap stairs from the walk policy) — **but re-check this helps every time the base checkpoint changes, see "Lessons learned" #5 above** |
 
-`train_stairs.py` additionally has:
+`train_stairs.py` and `train_plateau.py` additionally have:
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--no-curriculum` | off | use the full step-height range and all 5 steps from step zero, skipping the height/step-count ramp-up (see "Stairs environment" above for why this alone doesn't work well) |
+| `--no-curriculum` | off | use the full height range (and, for stairs, all 5 steps) from step zero, skipping the ramp-up (see "Lessons learned" above for why this alone doesn't work well) |
 | `--learning-rate X` | `3e-4` | overrides the checkpoint's saved learning rate when `--warm-start` is set; lower it (e.g. `5e-5`) when continuing training from a checkpoint that already works, to avoid destabilizing it (see "Lessons learned" above) |
+
+`train_stairs.py` alone additionally has:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--max-active-steps N` | `5` (`NUM_STEPS`) | cap the step-count curriculum at this many active risers instead of ramping to all 5 — e.g. `1` to focus entirely on a single step first |
 
 ```bash
 python3 training/train_walk.py --smoke-test
 python3 training/train_walk.py --timesteps 5000000 --n-envs 8 --run-name walk
 
 python3 training/train_stairs.py --smoke-test
-python3 training/train_stairs.py --timesteps 6000000 --n-envs 8 --run-name stairs \
-    --warm-start checkpoints/walk/final_model.zip
+python3 training/train_stairs.py --timesteps 6000000 --n-envs 8 --run-name stairs --max-active-steps 1
 # continuing an already-decent stairs checkpoint safely:
 python3 training/train_stairs.py --timesteps 6000000 --run-name stairs_v2 \
     --warm-start checkpoints/stairs/final_model.zip --no-curriculum --learning-rate 5e-5
+
+python3 training/train_plateau.py --smoke-test
+python3 training/train_plateau.py --timesteps 6000000 --n-envs 8 --run-name plateau
 ```
 
 ### `scripts/rollout_policy.py` — watch a trained checkpoint
@@ -386,12 +430,13 @@ python3 training/train_stairs.py --timesteps 6000000 --run-name stairs_v2 \
 | Flag | Default | Meaning |
 |---|---|---|
 | `checkpoint` (positional) | required | path to a saved SB3 `.zip` |
-| `--env {walk,stairs}` | `walk` | which task env the checkpoint was trained on |
+| `--env {walk,stairs,plateau}` | `walk` | which task env the checkpoint was trained on |
 | `--no-randomize` | off | disable domain randomization for a clean, repeatable nominal-physics rollout |
 | `--episodes N` | `10` | number of episodes to play |
 | `--seed N` | `0` | first episode's seed (episode *i* uses `seed+i`) — reuse a seed to replay the exact same command/step-height/etc. |
 | `--record PATH.mp4` | none | render headless to this video file instead of opening the interactive viewer (no display needed) |
 | `--speed X` | `1.0` | interactive-viewer-only: playback speed multiplier (`0.5` = slow motion, `2.0` = 2x) — the viewer paces itself to real time by default |
+| `--active-steps N` | none | stairs env only: **must** match whatever `--max-active-steps` the checkpoint was trained with (the env defaults to all 5 steps, which looks like the policy has "forgotten how to climb" if it was actually trained on just 1) |
 
 ```bash
 python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip
@@ -411,7 +456,7 @@ during cleanup, after all episodes have already finished and printed their resul
 |---|---|---|
 | 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | Done |
 | 2 | Full walking policy + domain randomization | Needs retraining — the joint-range/rest-pose fix (see "Model" above) changed the action space; prior checkpoint is stale |
-| 3 | Small-stair climbing (procedural terrain) | Needs retraining, same reason as Phase 2 — prior progress (occasional single-step crossing) was against the old, incorrect joint ranges |
+| 3 | Small-stair climbing (procedural terrain) | In progress — single-step crossing achieved (2/8 success rate) after the joint-range fix + training from scratch; full 5-step staircase not yet attempted again. A simpler "plateau" task (up-across-down, `envs/dogzilla_plateau_env.py`) is being trained in parallel to isolate the up/down-step skill |
 | 4 | Fall recovery | Not started |
 | 5 | Sim-to-real deployment (new ROS 2 node, calls `DOGZILLALib.motor()` directly) | Not started |
 | 6 | Nav2 integration | Open question, not decided |

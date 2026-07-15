@@ -96,3 +96,59 @@ def randomize_step_height(model, step_height, active_steps=NUM_STEPS):
     half_x, half_y, half_z, pos_x, pos_z = _landing_geom_dims(step_height, active_steps)
     model.geom_size[landing_id] = [half_x, half_y, half_z]
     model.geom_pos[landing_id] = [pos_x, 0, pos_z]
+
+
+# --- Plateau terrain: step UP onto a raised platform, walk across, step DOWN
+# back to ground level -- a single up + single down riser, instead of a
+# multi-step staircase. Reuses the same start/landing platform pattern.
+PLATEAU_LENGTH = 0.5  # m, long enough to fully stand on top before stepping down
+PLATEAU_GEOM_NAME = "plateau"
+PLATEAU_START_GEOM_NAME = "plateau_start"
+PLATEAU_LANDING_GEOM_NAME = "plateau_landing"
+
+
+def _plateau_geom_dims(plateau_height):
+    half_x = PLATEAU_LENGTH / 2
+    half_y = STEP_WIDTH / 2
+    half_z = plateau_height / 2
+    pos_x = half_x
+    pos_z = half_z
+    return half_x, half_y, half_z, pos_x, pos_z
+
+
+def build_plateau_xml():
+    """Flat-ground dogzilla.xml with its floor plane swapped for: start
+    platform (height 0) -> raised plateau (placeholder height, mutated per
+    episode) -> landing platform (height 0). One up-step, one down-step."""
+    xml = MODEL_PATH.read_text()
+    xml = xml.replace('meshdir="meshes"', f'meshdir="{MESHDIR}"')
+
+    geoms = [
+        f'<geom name="{PLATEAU_START_GEOM_NAME}" type="box" '
+        f'size="{START_PLATFORM_DEPTH / 2} {STEP_WIDTH / 2} 0.05" '
+        f'pos="{-START_PLATFORM_DEPTH / 2} 0 -0.05" material="floor" friction="0.9 0.02 0.01"/>'
+    ]
+    half_x, half_y, half_z, pos_x, pos_z = _plateau_geom_dims(NOMINAL_STEP_HEIGHT)
+    geoms.append(
+        f'<geom name="{PLATEAU_GEOM_NAME}" type="box" size="{half_x} {half_y} {half_z}" '
+        f'pos="{pos_x} 0 {pos_z}" material="floor" friction="0.9 0.02 0.01"/>'
+    )
+    geoms.append(
+        f'<geom name="{PLATEAU_LANDING_GEOM_NAME}" type="box" '
+        f'size="{LANDING_DEPTH / 2} {STEP_WIDTH / 2} 0.05" '
+        f'pos="{PLATEAU_LENGTH + LANDING_DEPTH / 2} 0 -0.05" material="floor" friction="0.9 0.02 0.01"/>'
+    )
+
+    xml = xml.replace(FLOOR_GEOM_LINE, "\n    ".join(geoms))
+    return xml
+
+
+def randomize_plateau_height(model, plateau_height):
+    """Mutate the already-compiled model's plateau geom to realize
+    `plateau_height` (meters) without recompiling. Call once per episode reset.
+    Start/landing platforms stay fixed at height 0 -- only the plateau itself
+    (and thus the up-step and down-step it presents) changes."""
+    geom_id = model.geom(PLATEAU_GEOM_NAME).id
+    half_x, half_y, half_z, pos_x, pos_z = _plateau_geom_dims(plateau_height)
+    model.geom_size[geom_id] = [half_x, half_y, half_z]
+    model.geom_pos[geom_id] = [pos_x, 0, pos_z]
