@@ -42,12 +42,23 @@ Checkpoints are saved under `checkpoints/<run-name>/` (gitignored — trained mo
 committed). `python3 training/train_walk.py --timesteps 5000000 --n-envs 8` is the budget
 that actually produced the current `checkpoints/walk/final_model.zip`.
 
-**3 — Watch a trained policy:**
+**3 — Train a stair-climbing policy** (warm-starting from the walk policy converges far
+faster than random init — see "How the learning actually works" below):
 
 ```bash
-python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip                       # interactive viewer
-python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip --record out.mp4 --no-randomize  # headless, no display needed
+python3 training/train_stairs.py --timesteps 6000000 --n-envs 8 \
+    --run-name stairs --warm-start checkpoints/walk/final_model.zip
 ```
+
+**4 — Watch a trained policy:**
+
+```bash
+python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip                       # interactive viewer, real time
+python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip --record out.mp4 --no-randomize  # headless, no display needed
+python3 scripts/rollout_policy.py checkpoints/stairs/final_model.zip --env stairs --speed 0.5  # slow-motion, stairs task
+```
+
+See "Command reference" below for every flag on every script.
 
 ## Model (`models/dogzilla.xml`)
 
@@ -288,6 +299,75 @@ existed.
 > **4 — Stiff/straight legs.** Same root cause and same fix as the walk-policy lesson
 > above (`joint_extreme_penalty`); the stairs task warm-starts from the walk policy, so it
 > inherited the defect until the base policy was retrained.
+
+## Command reference
+
+All commands assume `cd mujoco_rl && source .venv/bin/activate` first.
+
+### `scripts/view_model.py` — sanity-check the MJCF model
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--headless` | off | skip the interactive viewer window, just print settle diagnostics (base height/orientation after 3s) and exit |
+
+```bash
+python3 scripts/view_model.py             # opens a window, robot drops from 0.15m and settles
+python3 scripts/view_model.py --headless  # for scripts/CI — no window, just prints numbers
+```
+
+### `training/train_walk.py` and `training/train_stairs.py` — PPO training
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--smoke-test` | off | forces `--timesteps 100000 --n-envs 2` — verifies the full env/PPO/checkpoint loop in a few minutes, not a real training budget |
+| `--timesteps N` | `20000000` | total environment steps to train for |
+| `--n-envs N` | `8` | parallel `SubprocVecEnv` copies (match to CPU core count) |
+| `--checkpoint-freq N` | `200000` | environment steps between saved checkpoints |
+| `--run-name NAME` | `walk` / `stairs` | checkpoints go to `checkpoints/<run-name>/` |
+| `--warm-start PATH` | none | initialize weights from an existing `.zip` checkpoint instead of random init (e.g. bootstrap stairs from the walk policy) |
+
+`train_stairs.py` additionally has:
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--no-curriculum` | off | use the full step-height range and all 5 steps from step zero, skipping the height/step-count ramp-up (see "Stairs environment" above for why this alone doesn't work well) |
+| `--learning-rate X` | `3e-4` | overrides the checkpoint's saved learning rate when `--warm-start` is set; lower it (e.g. `5e-5`) when continuing training from a checkpoint that already works, to avoid destabilizing it (see "Lessons learned" above) |
+
+```bash
+python3 training/train_walk.py --smoke-test
+python3 training/train_walk.py --timesteps 5000000 --n-envs 8 --run-name walk
+
+python3 training/train_stairs.py --smoke-test
+python3 training/train_stairs.py --timesteps 6000000 --n-envs 8 --run-name stairs \
+    --warm-start checkpoints/walk/final_model.zip
+# continuing an already-decent stairs checkpoint safely:
+python3 training/train_stairs.py --timesteps 6000000 --run-name stairs_v2 \
+    --warm-start checkpoints/stairs/final_model.zip --no-curriculum --learning-rate 5e-5
+```
+
+### `scripts/rollout_policy.py` — watch a trained checkpoint
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `checkpoint` (positional) | required | path to a saved SB3 `.zip` |
+| `--env {walk,stairs}` | `walk` | which task env the checkpoint was trained on |
+| `--no-randomize` | off | disable domain randomization for a clean, repeatable nominal-physics rollout |
+| `--episodes N` | `10` | number of episodes to play |
+| `--seed N` | `0` | first episode's seed (episode *i* uses `seed+i`) — reuse a seed to replay the exact same command/step-height/etc. |
+| `--record PATH.mp4` | none | render headless to this video file instead of opening the interactive viewer (no display needed) |
+| `--speed X` | `1.0` | interactive-viewer-only: playback speed multiplier (`0.5` = slow motion, `2.0` = 2x) — the viewer paces itself to real time by default |
+
+```bash
+python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip
+python3 scripts/rollout_policy.py checkpoints/walk/final_model.zip --speed 0.4
+python3 scripts/rollout_policy.py checkpoints/stairs/final_model.zip --env stairs --no-randomize --episodes 5
+python3 scripts/rollout_policy.py checkpoints/stairs/final_model.zip --env stairs --record stairs.mp4 --no-randomize
+```
+
+Close the viewer window manually (click the X) when done watching, rather than waiting
+for the script to exit on its own — the passive viewer's shutdown has a known segfault-on-close
+quirk on some driver/GLFW combinations after the window is closed; it happens strictly
+during cleanup, after all episodes have already finished and printed their results.
 
 ## Roadmap status
 
