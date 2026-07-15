@@ -45,6 +45,9 @@ PUSH_INTERVAL_STEPS_RANGE = (100, 300)  # control steps between pushes
 PUSH_FORCE_RANGE = (0.0, 15.0)  # newtons, random horizontal direction
 
 HIP_JOINT_INDICES = [0, 3, 6, 9]  # lf/rf/lh/rh hip, within the 12-joint arrays
+LEG_FLEX_JOINT_INDICES = [1, 2, 4, 5, 7, 8, 10, 11]  # upper/lower leg joints (knees), not hips
+JOINT_EXTREME_MARGIN = 0.85  # only penalize within the outer 15% of a joint's range
+JOINT_EXTREME_WEIGHT = 3.0  # discourages locking legs straight at the range limit
 
 
 def quat_to_euler(quat):
@@ -209,6 +212,16 @@ class DogzillaWalkEnv(gym.Env):
         height = np.exp(-((base_z - TARGET_HEIGHT) ** 2) / 0.001)
         hip_angles = obs[HIP_JOINT_INDICES]
         hip_splay_penalty = -1.0 * np.mean(np.square(hip_angles))
+
+        # Discourage knees locking straight at their range limit, without
+        # suppressing the normal mid-range swing motion of walking.
+        leg_angles = obs[LEG_FLEX_JOINT_INDICES]
+        leg_low = self.joint_range[LEG_FLEX_JOINT_INDICES, 0]
+        leg_high = self.joint_range[LEG_FLEX_JOINT_INDICES, 1]
+        leg_normalized = (leg_angles - leg_low) / (leg_high - leg_low)
+        leg_extremity = np.maximum(leg_normalized, 1.0 - leg_normalized)
+        joint_extreme_penalty = -JOINT_EXTREME_WEIGHT * float(np.mean(np.clip(leg_extremity - JOINT_EXTREME_MARGIN, 0.0, None)))
+
         action_rate_penalty = -0.01 * np.sum((action - self._prev_action) ** 2)
         torque_penalty = -1e-4 * np.sum(np.square(self.data.actuator_force))
         survival = 0.5
@@ -219,6 +232,7 @@ class DogzillaWalkEnv(gym.Env):
             + 0.3 * upright
             + 1.0 * height
             + hip_splay_penalty
+            + joint_extreme_penalty
             + action_rate_penalty
             + torque_penalty
             + survival

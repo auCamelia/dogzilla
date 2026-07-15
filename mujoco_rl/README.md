@@ -121,6 +121,29 @@ optimizes precisely what you measure, not what you meant — which is why watchi
 rendered rollout (`scripts/rollout_policy.py --record`) matters as much as the reward
 curves, if not more.
 
+**8 — Warm-starting: reusing a network instead of starting from random weights.**
+`training/train_stairs.py --warm-start checkpoints/walk/final_model.zip` calls
+`PPO.load(path, env=vec_env)`, which restores the *exact* trained weights (policy +
+value function) from the flat-walk run instead of the random initialization normally
+used. Training then continues on top of that, against the new stairs environment/reward.
+Concretely this matters a lot early on: from scratch, `ep_rew_mean` after 100k steps was
+~157; warm-started from the walk policy, it was already ~700-1000 within the first few
+thousand steps, because "how to stand up and move forward" transfers directly. The
+trade-off: the network also inherits whatever the walk policy's gait was tuned around, so
+a flaw baked into that base policy (see the stiff-rear-leg lesson below) rides along into
+every task warm-started from it.
+
+**9 — Continuing training safely: lowering the learning rate.** Naively continuing to
+train an already-decent checkpoint at the same `learning_rate=3e-4` used for its original
+training can make things *worse*, not better — this actually happened during Phase 3
+(a continuation run's `approx_kl` spiked to ~0.09-0.10 and `clip_fraction` to ~0.6,
+both signs of large, destabilizing policy updates, and the resulting checkpoint could no
+longer cross even one step, versus its starting point). `train_stairs.py --learning-rate`
+overrides the checkpoint's saved learning rate at load time
+(`PPO.load(path, env=vec_env, learning_rate=...)`); dropping it from `3e-4` to `5e-5` for
+a continuation run keeps updates small enough to fine-tune rather than overwrite what
+already worked.
+
 ## Environment (`envs/dogzilla_env.py`)
 
 `DogzillaWalkEnv` — velocity-command tracking on flat ground.
@@ -132,19 +155,34 @@ curves, if not more.
   acceleration — the real IMU can't provide it, so the sim doesn't get it either.
 - **Reward**: exponential velocity-tracking (linear + yaw) + upright-orientation term +
   standing-height term (tight sigma, weight 1.0) + hip-splay penalty (mean squared hip
-  joint angle) + small action-rate/torque penalties + a survival bonus.
+  joint angle) + joint-extremity penalty (discourages knees locking straight at their
+  range limit) + small action-rate/torque penalties + a survival bonus.
 - **Episode end**: falls (roll/pitch past ~51°, or base height collapses) end the
   episode; otherwise truncates at 500 steps (10s at the 50 Hz control rate).
 
-> **Lesson learned (Phase 2):** the first reward version (height weight 0.2, loose sigma,
-> no hip term) let PPO find a locally-optimal but degenerate "crab-crawl" gait — crouched
-> low with hips splayed sideways, which tracked commanded velocity fine but isn't a real
-> walk (roll/pitch stayed near zero since the body itself stayed level, so the
-> upright term didn't catch it). Caught by actually watching a recorded rollout, not by
-> reward curves — `ep_rew_mean` looked completely healthy the whole time. Fixed by
+> **Lesson learned (Phase 2, crab-crawl):** the first reward version (height weight 0.2,
+> loose sigma, no hip term) let PPO find a locally-optimal but degenerate "crab-crawl"
+> gait — crouched low with hips splayed sideways, which tracked commanded velocity fine
+> but isn't a real walk (roll/pitch stayed near zero since the body itself stayed level,
+> so the upright term didn't catch it). Caught by actually watching a recorded rollout,
+> not by reward curves — `ep_rew_mean` looked completely healthy the whole time. Fixed by
 > tightening the height sigma + raising its weight so crouching is punished, and adding
 > `hip_splay_penalty` on the 4 hip joints. **Always eyeball a rendered rollout
 > (`scripts/rollout_policy.py --record`) before trusting reward curves alone.**
+
+> **Lesson learned (stiff legs):** watching a *trained* walk policy in the real-time
+> interactive viewer (`scripts/rollout_policy.py --speed 0.5`, no `--record`) — not the
+> distant, low-res still frames used to sanity-check Phase 2 the first time around —
+> revealed the rear legs locking straight/rigid instead of staying bent. Nothing in the
+> reward discouraged a joint from sitting at the extreme of its range; a straight leg
+> satisfies height/upright/tracking just as well as a bent one, so PPO had no reason to
+> avoid it. Fixed with `joint_extreme_penalty`: it computes each knee-like joint's position
+> normalized into `[0, 1]` across its range, and only penalizes the outer 15%
+> (`JOINT_EXTREME_MARGIN = 0.85`) — normal mid-range swing motion during walking is
+> untouched, only sitting at (or very near) the hard limit is discouraged. This is why
+> the walking policy was retrained from scratch rather than patched: it's the base
+> checkpoint every other task warm-starts from (see "Warm-starting" above), so a defect
+> here silently rides along into stairs, fall recovery, everything downstream.
 
 ### Domain randomization (Phase 2, `randomize=True` by default)
 
@@ -162,13 +200,102 @@ Pass `DogzillaWalkEnv(randomize=False)` for a clean nominal-physics rollout (e.g
 separate "policy is bad" from "policy just hasn't adapted to this randomized sample") —
 this is also what `scripts/rollout_policy.py --no-randomize` uses under the hood.
 
+## Stairs environment (`envs/dogzilla_stairs_env.py`, `envs/terrain.py`, `training/train_stairs.py`)
+
+`DogzillaStairsEnv` subclasses `DogzillaWalkEnv` (reusing action scaling, observation
+construction, domain randomization, action-latency, and push-perturbation code as-is) but
+replaces the flat floor with a procedurally generated staircase, and swaps in a
+forward-only command and a terrain-aware reward. Status: partially working (the policy
+reliably approaches the stairs and, at the easy end of the difficulty range, has crossed
+the first step) but not yet a reliable full climb — this section documents the mechanism
+and the string of failure modes found and fixed along the way, since that history is the
+most useful thing to know before touching this code further.
+
+**Terrain generation (`envs/terrain.py`).** Rather than hand-authoring a second MJCF file
+(risking the robot body definition drifting out of sync between two files),
+`build_stairs_xml()` reads `models/dogzilla.xml` as plain text and textually replaces its
+single `<geom name="floor".../>` line with a start platform + `NUM_STEPS=5` box-step geoms
++ a landing platform. MuJoCo can't add or remove geoms without recompiling the whole
+model, so the step *count* and *depth/width* are fixed forever once compiled — but step
+*height* is changed every episode by directly overwriting the already-compiled model's
+`geom_size`/`geom_pos` arrays (`randomize_step_height()`), the same trick used for mass/
+friction/motor-gain domain randomization in the base env, and just as cheap (no
+recompilation).
+
+**Curriculum (`training/train_stairs.py`'s `StairsCurriculum` callback).** Presenting the
+full difficulty (5 steps, up to 4cm rise) from the first training step turned out to
+teach nothing (see the lessons below) — so `StairsCurriculum` linearly ramps two axes
+over the first `ramp_fraction=0.7` of training:
+- **Step height**: `(0.0, 0.005)` → `STEP_HEIGHT_RANGE = (0.01, 0.04)` meters.
+- **Active step count**: `1` → `NUM_STEPS=5`. Steps beyond the "active" count are
+  flattened to the height of the last active step (`envs/terrain.py`'s `_step_rise()`),
+  so the track is always geometrically continuous — the robot just doesn't have to climb
+  any of the flattened ones yet.
+
+Every `update_freq=20_000` steps it calls `training_env.env_method("set_step_height_range",
+low, high)` and `set_active_steps(n)` on every parallel env — the standard way to reach
+into a `SubprocVecEnv`'s remote environments from a callback.
+
+**Reward** — velocity tracking + upright + hip-splay + joint-extremity (shared with the
+walk task) plus stairs-specific terms:
+- **Terrain-relative height**, not absolute world Z: `_expected_ground_height(x)`
+  computes the analytic staircase profile so the height reward means "how far above
+  *whatever's directly underneath* the robot is standing" — using absolute Z would
+  wrongly penalize the robot for simply being higher up after successfully climbing.
+- **Progress** (`progress_reward`): raw net x-displacement this step, in meters, times a
+  weight of 50 — a dense, direct "did you actually move forward" signal, deliberately
+  separate from velocity tracking (see the "freezing" lesson below).
+- **Foot clearance** (`foot_clearance_reward`): for each of the 4 foot sites, clearance =
+  `foot_z - _expected_ground_height(foot_x)`, clipped to `[0, 0.06m]`. A planted foot has
+  ~0 clearance regardless of which step it's on; only an actively lifted foot scores, which
+  directly rewards lifting a leg higher to clear a riser without needing explicit
+  swing/stance phase detection.
+- **Per-step checkpoint bonus** (`step_bonus`): a one-time `+10` the first time the robot's
+  base clears each step's far edge — a sparse signal layered on top of the dense progress
+  reward.
+
+**Episode ends early on lack of progress, not just on falling.** `STALL_WINDOW=100`
+control steps: if net x-displacement over that window is under `STALL_MIN_PROGRESS=0.05m`,
+the episode ends exactly like a fall would. See the "freezing" lesson below for why this
+existed.
+
+### Lessons learned building the stairs task (chronological)
+
+> **1 — Loose velocity-tracking sigma → policy stands still and calls it "tracking."**
+> The walk task's `tracking_lin` sigma (`0.25`) gives standing *completely* still ~0.91
+> reward when the command is only ~0.15 m/s (`exp(-0.15²/0.25)`) — nearly as good as
+> actually walking. On flat ground this never mattered enough to notice; in front of a
+> stair riser (a genuinely hard, fall-risking obstacle) it was enough incentive to just
+> not try. Fixed by tightening `tracking_lin`'s sigma to `0.02` for the stairs task
+> specifically, and adding the separate `progress_reward` (distance-based, not
+> velocity-based) described above.
+
+> **2 — Even with progress reward, PPO learned to freeze.** Falling ends the episode and
+> forfeits all future reward; standing still safely near the stairs (collecting survival +
+> upright + height every step, ~2.5/step) for a full 700-step episode (~1750 total) beat
+> the expected value of attempting a risky climb and probably falling partway through.
+> This is a standard "risk-averse freezing" failure mode, not specific to this codebase.
+> Fixed with the stall-window early termination above: freezing now ends the episode just
+> as fast as falling does, removing the "safe to do nothing" option entirely.
+
+> **3 — Naive "train longer" made things *worse*, not better.** Continuing training
+> from a checkpoint that had (rarely) crossed step one, at the same `learning_rate=3e-4`
+> used originally, drove `approx_kl` up to ~0.09-0.10 and `clip_fraction` to ~0.6 (both
+> signs of large, destabilizing updates) and the result regressed to crossing zero steps
+> across a full evaluation batch. See "Continuing training safely" above — the fix was
+> `--learning-rate 5e-5` for continuation runs, not more steps at the original rate.
+
+> **4 — Stiff/straight legs.** Same root cause and same fix as the walk-policy lesson
+> above (`joint_extreme_penalty`); the stairs task warm-starts from the walk policy, so it
+> inherited the defect until the base policy was retrained.
+
 ## Roadmap status
 
 | Phase | Goal | Status |
 |---|---|---|
 | 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | Done |
-| 2 | Full walking policy + domain randomization | Done |
-| 3 | Small-stair climbing (procedural terrain) | Not started |
+| 2 | Full walking policy + domain randomization | Done (retrained once to fix a stiff-leg defect, see below) |
+| 3 | Small-stair climbing (procedural terrain) | In progress — approaches reliably, occasional single-step crossing, full climb not yet reliable |
 | 4 | Fall recovery | Not started |
 | 5 | Sim-to-real deployment (new ROS 2 node, calls `DOGZILLALib.motor()` directly) | Not started |
 | 6 | Nav2 integration | Open question, not decided |

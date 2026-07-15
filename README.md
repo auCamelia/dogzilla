@@ -272,7 +272,7 @@ can't provide.
 |---|---|---|
 | 1 | MJCF model + base Gymnasium env + PPO walking smoke-test | Done |
 | 2 | Full walking policy (domain randomization for robustness) | Done |
-| 3 | Small-stair climbing (procedural terrain, blind proprioceptive policy) | Planned |
+| 3 | Small-stair climbing (procedural terrain, blind proprioceptive policy) | In progress — see `mujoco_rl/README.md` for the failure modes found and fixed so far |
 | 4 | Fall recovery (randomized fallen initial poses) | Planned |
 | 5 | Sim-to-real deployment (new ROS 2 node, sole serial owner, calls `motor()` directly) | Planned |
 | 6 | Nav2 integration | Open question — Nav2 (mapping/AMCL/planning) stays either way; only whether its `/cmd_vel` output eventually drives the learned policy instead of firmware gait is undecided |
